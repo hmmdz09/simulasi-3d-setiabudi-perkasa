@@ -250,19 +250,17 @@ export class TrafficSystem {
     };
   }
 
-  initPool(count = 96) {
-    // Strictly calibrated to real survey data: 5,000 Motor & 1,800 Mobil/kendaraan lain per jam
-    // Motor = 73.53% (25 of 34 units), Mobil & angkutan = 26.47% (9 of 34 units)
+  initPool(count = 110) {
+    // Calibrated vehicle fleet with ample passenger cars for Jl. Perkasa (UPI access)
     const vehicleDistribution = [
-      'motorcycle', 'motorcycle', 'sedan', 'motorcycle',
-      'motorcycle', 'motorcycle', 'suv', 'motorcycle',
-      'motorcycle', 'motorcycle', 'angkot', 'motorcycle',
-      'motorcycle', 'motorcycle', 'bus', 'motorcycle',
-      'motorcycle', 'motorcycle', 'sedan', 'motorcycle',
-      'motorcycle', 'motorcycle', 'truck', 'motorcycle',
-      'motorcycle', 'motorcycle', 'sedan', 'motorcycle',
-      'motorcycle', 'motorcycle', 'suv', 'motorcycle',
-      'motorcycle', 'sedan'
+      'motorcycle', 'sedan', 'motorcycle', 'suv',
+      'motorcycle', 'sedan', 'motorcycle', 'suv',
+      'motorcycle', 'angkot', 'motorcycle', 'sedan',
+      'motorcycle', 'bus', 'motorcycle', 'suv',
+      'motorcycle', 'sedan', 'motorcycle', 'truck',
+      'motorcycle', 'suv', 'motorcycle', 'sedan',
+      'motorcycle', 'angkot', 'motorcycle', 'suv',
+      'motorcycle', 'sedan', 'motorcycle', 'suv'
     ];
 
     for (let i = 0; i < count; i++) {
@@ -299,8 +297,17 @@ export class TrafficSystem {
     const pathData = this.paths[pathKey];
     if (!pathData) return null;
 
-    // Get an idle vehicle from pool first
-    const agent = this.vehiclePool.find(v => !v.isActive);
+    const isPerkasaPath = pathKey.includes('Perkasa');
+
+    // Get an idle vehicle from pool matching path requirements:
+    // Jl. Perkasa (entering or exiting UPI): ONLY CARS (sedan/suv) - NO motorcycles, NO trucks/buses!
+    const agent = this.vehiclePool.find(v => {
+      if (v.isActive) return false;
+      if (isPerkasaPath) {
+        return v.vehicle.type === 'sedan' || v.vehicle.type === 'suv';
+      }
+      return true;
+    });
     if (!agent) return null;
 
     // Dynamic headway check: motorcycles only need 5.2m, larger vehicles need 9.0m

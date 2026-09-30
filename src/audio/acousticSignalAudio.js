@@ -137,7 +137,7 @@ export class AcousticSignalAudio {
       if (!this.isPlaying) return;
       const remainingSec = getRemainingTimeFn ? getRemainingTimeFn() : 15;
 
-      const isUrgent = remainingSec <= 4.0; // Rapid beeps in final 4 seconds
+      const isUrgent = remainingSec <= 2.5; // Rapid beeps in final 2.5 seconds
       this.playCrossingPulse(isUrgent);
 
       // Normal rhythm: 260ms interval; Urgent rhythm: 140ms

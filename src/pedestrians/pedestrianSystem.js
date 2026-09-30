@@ -11,12 +11,11 @@ export class PedestrianSystem {
     this.crossingMode = 'normal';
     this.isCrossing = false;
     this.crossingDirection = 1; // 1: East to West (8.5 -> -8.5), -1: West to East
-    this.crossingProgress = 0; // 0 to 1
-    this.crossingSpeed = 2.25; // m/s walking speed (accelerated brisk crossing)
+    this.crossingSpeed = 3.10; // m/s walking speed (crosses 17m in ~5.5 seconds)
     this.totalCrossingDistance = 17.0; // from X = +8.5 to X = -8.5
 
-    // Active crossing duration (lampu hijau pejalan kaki menyala: 10 detik)
-    this.crossingDuration = 10.0;
+    // Active crossing duration: 6 detik (sesuai permintaan user: 5-7 detik)
+    this.crossingDuration = 6.0;
     this.crossingRemaining = 0;
 
     // 2-Minute (120 Detik) Button Lockdown / Cooldown Phase
@@ -252,8 +251,9 @@ export class PedestrianSystem {
     this.crossingProgress = 0;
     this.pedestrianMesh.visible = true;
 
-    // Adjust walking speed: 17 meters crossed briskly within ~7.5 - 8.8 seconds
-    this.crossingSpeed = (this.crossingMode === 'tunanetra') ? 1.95 : 2.25;
+    // Adjust walking speed: 17 meters crossed briskly within 5 - 7 seconds
+    // Normal: 17m / 3.10 m/s = 5.48s; Tunanetra: 17m / 2.65 m/s = 6.41s
+    this.crossingSpeed = (this.crossingMode === 'tunanetra') ? 2.65 : 3.10;
 
     // Update 3D character accessories (white cane & glasses)
     this.updateCharacterAccessories();
@@ -360,10 +360,10 @@ export class PedestrianSystem {
         this.crossingProgress += (this.crossingSpeed * dt) / this.totalCrossingDistance;
         this.crossingProgress = Math.min(1.0, this.crossingProgress);
 
-        // Animate brisk walking limbs matching accelerated speed
-        const walkFreq = (this.crossingMode === 'tunanetra') ? 10.0 : 12.5;
+        // Animate brisk walking limbs matching high crossing speed (5-7 detik)
+        const walkFreq = (this.crossingMode === 'tunanetra') ? 13.5 : 16.5;
         const walkPhase = time * walkFreq;
-        const limbSwing = Math.sin(walkPhase) * 0.62;
+        const limbSwing = Math.sin(walkPhase) * 0.72;
         this.pedestrianMesh.leftLeg.rotation.x = limbSwing;
         this.pedestrianMesh.rightLeg.rotation.x = -limbSwing;
         this.pedestrianMesh.leftArm.rotation.x = -limbSwing;
