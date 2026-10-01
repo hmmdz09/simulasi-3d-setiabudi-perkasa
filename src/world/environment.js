@@ -298,21 +298,61 @@ export class CityEnvironment {
     uStop.position.set(9.0, 0.025, -65.5);
     this.scene.add(uStop);
 
-    // 4. Short horizontal stub to the West at Z = -58
-    const stubLen = 32.0;
-    const stubGeo = new THREE.PlaneGeometry(stubLen, 8.5);
-    const stubRoad = new THREE.Mesh(stubGeo, this.mm.materials.asphalt);
-    stubRoad.rotation.x = -Math.PI / 2;
-    stubRoad.position.set(-7.8 - stubLen / 2, 0.013, -58);
-    stubRoad.receiveShadow = true;
-    this.scene.add(stubRoad);
-
     // Central junction blending apron mesh so all branches connect with no gaps
-    const apronGeo = new THREE.PlaneGeometry(24, 26);
+    const apronGeo = new THREE.PlaneGeometry(20, 24);
     const apron = new THREE.Mesh(apronGeo, this.mm.materials.asphalt);
     apron.rotation.x = -Math.PI / 2;
-    apron.position.set(-3, 0.0125, -68);
+    apron.position.set(-1.0, 0.0125, -70);
     this.scene.add(apron);
+
+    // Dedicated Simpang Bajuri Corner Turning Apron (South-West corner)
+    // Seamlessly paves the turning corridor between Setiabudi interior (X = -7.8) and the curved curb return
+    // Ensures vehicles turning left into Sersan Bajuri always drive on solid asphalt with zero grass gaps!
+    const turnApronGeo = new THREE.BufferGeometry();
+    const apronVertices = [];
+    const apronUvs = [];
+    const apronIndices = [];
+
+    const cornerApronCurbNodes = [
+      { x: -8.00,  z: -47.00 },
+      { x: -8.70,  z: -49.50 },
+      { x: -10.20, z: -53.00 },
+      { x: -12.60, z: -57.50 },
+      { x: -15.80, z: -63.00 },
+      { x: -19.60, z: -69.50 },
+      { x: -24.12, z: -77.12 }
+    ];
+
+    for (let i = 0; i < cornerApronCurbNodes.length; i++) {
+      const c = cornerApronCurbNodes[i];
+      // Vertex 2*i: interior road point along Setiabudi (X = -7.8)
+      const mX = -7.8;
+      const mZ = c.z;
+      apronVertices.push(mX, 0.0125, mZ);
+      apronUvs.push(mX * 0.2, mZ * 0.2);
+
+      // Vertex 2*i + 1: road curb edge point
+      apronVertices.push(c.x, 0.0125, c.z);
+      apronUvs.push(c.x * 0.2, c.z * 0.2);
+    }
+
+    for (let i = 0; i < cornerApronCurbNodes.length - 1; i++) {
+      const i0 = 2 * i;
+      const i1 = 2 * i + 1;
+      const i2 = 2 * (i + 1);
+      const i3 = 2 * (i + 1) + 1;
+      apronIndices.push(i0, i2, i3);
+      apronIndices.push(i0, i3, i1);
+    }
+
+    turnApronGeo.setAttribute('position', new THREE.Float32BufferAttribute(apronVertices, 3));
+    turnApronGeo.setAttribute('uv', new THREE.Float32BufferAttribute(apronUvs, 2));
+    turnApronGeo.setIndex(apronIndices);
+    turnApronGeo.computeVertexNormals();
+
+    const turnApronMesh = new THREE.Mesh(turnApronGeo, this.mm.materials.asphalt);
+    turnApronMesh.receiveShadow = true;
+    this.scene.add(turnApronMesh);
   }
 
   createMohYaminRoad() {
@@ -366,9 +406,9 @@ export class CityEnvironment {
     this.scene.add(eastCurbN);
 
     // 2. West Sidewalk & Curb along Setiabudi (broken at Perkasa Z: [6.5, 17.5] and Simpang Bajuri Z: [-78, -53])
-    // 2a. West Sidewalk - Mid section between Perkasa & Simpang (Z: -53 to 6.5, length 59.5m)
-    const lenWMid = 59.5;
-    const zWMid = 6.5 - lenWMid / 2; // -23.25
+    // 2a. West Sidewalk - Mid section between Perkasa & Simpang (stops at Z = -47.0 before corner curve)
+    const lenWMid = 53.5; // Z: -47.0 to 6.5
+    const zWMid = 6.5 - lenWMid / 2; // -20.25
     const westSwMid = new THREE.Mesh(new THREE.BoxGeometry(sidewalkWidth, curbHeight, lenWMid), this.mm.materials.sidewalk);
     westSwMid.position.set(-8 - sidewalkWidth / 2, curbHeight / 2, zWMid);
     westSwMid.receiveShadow = true;
@@ -424,42 +464,215 @@ export class CityEnvironment {
     uSwS.position.set(8 + uripSwLen / 2, curbHeight / 2, -74.5);
     this.scene.add(uSwS);
 
-    // 5. Sidewalks & Curbs along Jl. Sersan Bajuri
-    const bajuriSwLen = 86.0;
-    const bCos = Math.cos(0.65);
-    const bSin = Math.sin(0.65);
+    // 5. Sidewalks & Curbs along Jl. Sersan Bajuri (Left & Right Sides)
+    // Sersan Bajuri orientation: angled at 0.65 rad (rotation.y = 0.65 + Math.PI)
+    const bajuriSwGroup = new THREE.Group();
+    bajuriSwGroup.position.set(-36, 0, -102);
+    bajuriSwGroup.rotation.y = 0.65 + Math.PI;
 
-    // North-East sidewalk (offset +6.85m from centerline)
-    const bSwN = new THREE.Mesh(new THREE.BoxGeometry(2.5, curbHeight, bajuriSwLen), this.mm.materials.sidewalk);
-    bSwN.rotation.x = -Math.PI / 2;
-    bSwN.rotation.z = 0.65;
-    bSwN.position.set(-36 + 6.85 * bCos, curbHeight / 2, -102 - 6.85 * bSin);
-    bSwN.receiveShadow = true;
-    this.scene.add(bSwN);
+    const bRoadHalfW = 5.25; // bajuriWidth (10.5) / 2
+    const bSwWidth = 2.4;
 
-    // North-East curb
-    const bCurbN = new THREE.Mesh(new THREE.BoxGeometry(curbWidth, curbHeight + 0.01, bajuriSwLen), this.mm.materials.curb);
-    bCurbN.rotation.x = -Math.PI / 2;
-    bCurbN.rotation.z = 0.65;
-    bCurbN.position.set(-36 + 5.425 * bCos, curbHeight / 2, -102 - 5.425 * bSin);
-    this.scene.add(bCurbN);
-
-    // South-West sidewalk (offset -6.85m from centerline)
-    const bSwS = new THREE.Mesh(new THREE.BoxGeometry(2.5, curbHeight, bajuriSwLen), this.mm.materials.sidewalk);
-    bSwS.rotation.x = -Math.PI / 2;
-    bSwS.rotation.z = 0.65;
-    bSwS.position.set(-36 - 6.85 * bCos, curbHeight / 2, -102 + 6.85 * bSin);
+    // --- South-West Sidewalk (Left Side / Samping Kiri, local +X) ---
+    // Starts at local Z = -27.0 (seamlessly meets the curved corner at world X = -24.12, Z = -77.12) to Parongpong end (local Z = 47.5) -> length 74.5m
+    const swLenLeft = 74.5;
+    const bSwS = new THREE.Mesh(new THREE.BoxGeometry(bSwWidth, curbHeight, swLenLeft), this.mm.materials.sidewalk);
+    bSwS.position.set(bRoadHalfW + curbWidth + bSwWidth / 2, curbHeight / 2, 10.25);
     bSwS.receiveShadow = true;
-    this.scene.add(bSwS);
+    bajuriSwGroup.add(bSwS);
 
-    // South-West curb
-    const bCurbS = new THREE.Mesh(new THREE.BoxGeometry(curbWidth, curbHeight + 0.01, bajuriSwLen), this.mm.materials.curb);
-    bCurbS.rotation.x = -Math.PI / 2;
-    bCurbS.rotation.z = 0.65;
-    bCurbS.position.set(-36 - 5.425 * bCos, curbHeight / 2, -102 + 5.425 * bSin);
-    this.scene.add(bCurbS);
+    const bCurbS = new THREE.Mesh(new THREE.BoxGeometry(curbWidth, curbHeight + 0.01, swLenLeft), this.mm.materials.curb);
+    bCurbS.position.set(bRoadHalfW + curbWidth / 2, (curbHeight + 0.01) / 2, 10.25);
+    bajuriSwGroup.add(bCurbS);
 
-    // Rounded Corner Curbs at T-Junction corners (fused cylinders for realistic filleted curbs)
+    // --- North-East Sidewalk (Right Side / Samping Kanan, local -X) ---
+    // Runs from Terusan Setiabudi mouth corner (local Z = -38.0) to Parongpong end (local Z = 47.5) -> length 85.5m
+    const swLenRight = 85.5;
+    const bSwN = new THREE.Mesh(new THREE.BoxGeometry(bSwWidth, curbHeight, swLenRight), this.mm.materials.sidewalk);
+    bSwN.position.set(-(bRoadHalfW + curbWidth + bSwWidth / 2), curbHeight / 2, 4.75);
+    bSwN.receiveShadow = true;
+    bajuriSwGroup.add(bSwN);
+
+    const bCurbN = new THREE.Mesh(new THREE.BoxGeometry(curbWidth, curbHeight + 0.01, swLenRight), this.mm.materials.curb);
+    bCurbN.position.set(-(bRoadHalfW + curbWidth / 2), (curbHeight + 0.01) / 2, 4.75);
+    bajuriSwGroup.add(bCurbN);
+
+    // Green Ivy Fence along Sersan Bajuri sidewalks (Left & Right)
+    const denseIvyTex = this.createDenseIvyTexture();
+    const foliageMat = new THREE.MeshStandardMaterial({
+      map: denseIvyTex,
+      transparent: true,
+      alphaTest: 0.25,
+      roughness: 0.65,
+      metalness: 0.05,
+      side: THREE.DoubleSide
+    });
+    const postMat = new THREE.MeshStandardMaterial({ color: '#222629', roughness: 0.55, metalness: 0.65 });
+    const railMat = new THREE.MeshStandardMaterial({ color: '#2c3034', roughness: 0.5, metalness: 0.6 });
+
+    // Left side ivy fence panels (along local X = 5.55, from Z = -26 to 44)
+    for (let lz = -26; lz <= 44; lz += 2.4) {
+      const pMesh = new THREE.Mesh(new THREE.BoxGeometry(0.08, 1.6, 0.08), postMat);
+      pMesh.position.set(5.55, curbHeight + 0.8, lz);
+      bajuriSwGroup.add(pMesh);
+
+      const fMesh = new THREE.Mesh(new THREE.PlaneGeometry(2.35, 1.45), foliageMat);
+      fMesh.rotation.y = Math.PI / 2;
+      fMesh.position.set(5.55, curbHeight + 0.8, lz + 1.2);
+      bajuriSwGroup.add(fMesh);
+    }
+    // Continuous top & mid rails (Left)
+    [curbHeight + 0.75, curbHeight + 1.55].forEach(ry => {
+      const rMesh = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.05, 71), railMat);
+      rMesh.position.set(5.55, ry, 9.5);
+      bajuriSwGroup.add(rMesh);
+    });
+
+    // Right side ivy fence panels (along local X = -5.55)
+    for (let rz = -34; rz <= 44; rz += 2.4) {
+      const pMesh = new THREE.Mesh(new THREE.BoxGeometry(0.08, 1.6, 0.08), postMat);
+      pMesh.position.set(-5.55, curbHeight + 0.8, rz);
+      bajuriSwGroup.add(pMesh);
+
+      const fMesh = new THREE.Mesh(new THREE.PlaneGeometry(2.35, 1.45), foliageMat);
+      fMesh.rotation.y = -Math.PI / 2;
+      fMesh.position.set(-5.55, curbHeight + 0.8, rz + 1.2);
+      bajuriSwGroup.add(fMesh);
+    }
+    // Continuous top & mid rails (Right)
+    [curbHeight + 0.75, curbHeight + 1.55].forEach(ry => {
+      const rMesh = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.05, 79), railMat);
+      rMesh.position.set(-5.55, ry, 5.5);
+      bajuriSwGroup.add(rMesh);
+    });
+
+    this.scene.add(bajuriSwGroup);
+
+    // --- 6. Seamless Curved Corner Sidewalk & Curb (Simpang Bajuri South-West) ---
+    // Smoothly sweeps around the corner connecting Setiabudi (Z = -47.0) to Sersan Bajuri (Z = -77.12)
+    // Completely open turning corridor with generous 2.5m - 4.5m safety margin from the vehicle turning trajectory:
+    //   Car path: (-6.8, -48) -> (-10.5, -58) -> (-16.0, -68) -> (-22.0, -79)
+    // Never cuts into road, lane, or vehicle paths!
+    const cornerCurbNodes = [
+      { x: -8.00,  z: -47.00 },
+      { x: -8.70,  z: -49.50 },
+      { x: -10.20, z: -53.00 },
+      { x: -12.60, z: -57.50 },
+      { x: -15.80, z: -63.00 },
+      { x: -19.60, z: -69.50 },
+      { x: -24.12, z: -77.12 }
+    ];
+
+    const cornerOuterNodes = [
+      { x: -12.00, z: -47.00 },
+      { x: -12.20, z: -49.50 },
+      { x: -13.20, z: -53.00 },
+      { x: -15.20, z: -57.50 },
+      { x: -18.00, z: -63.00 },
+      { x: -21.60, z: -69.50 },
+      { x: -26.03, z: -75.66 }
+    ];
+
+    const cornerSwGroup = new THREE.Group();
+
+    // 6a. Continuous Sidewalk Paving Mesh (BufferGeometry)
+    // Perfectly bridges Setiabudi sidewalk (width 4m) to Sersan Bajuri sidewalk (width 2.4m) with zero cracks
+    const swGeo = new THREE.BufferGeometry();
+    const swVertices = [];
+    const swUvs = [];
+    const swIndices = [];
+
+    for (let i = 0; i < cornerCurbNodes.length; i++) {
+      const c = cornerCurbNodes[i];
+      const o = cornerOuterNodes[i];
+
+      // Inner vertex (at curb edge)
+      swVertices.push(c.x, curbHeight, c.z);
+      swUvs.push((c.x + 30) / 4.0, (c.z + 100) / 4.0);
+
+      // Outer vertex (boundary along houses / corner garden)
+      swVertices.push(o.x, curbHeight, o.z);
+      swUvs.push((o.x + 30) / 4.0, (o.z + 100) / 4.0);
+    }
+
+    for (let i = 0; i < cornerCurbNodes.length - 1; i++) {
+      const i0 = 2 * i;          // c0
+      const i1 = 2 * i + 1;      // o0
+      const i2 = 2 * (i + 1);     // c1
+      const i3 = 2 * (i + 1) + 1; // o1
+
+      // Counter-clockwise triangles with normal facing straight UP (+Y)
+      swIndices.push(i0, i2, i3);
+      swIndices.push(i0, i3, i1);
+    }
+
+    swGeo.setAttribute('position', new THREE.Float32BufferAttribute(swVertices, 3));
+    swGeo.setAttribute('uv', new THREE.Float32BufferAttribute(swUvs, 2));
+    swGeo.setIndex(swIndices);
+    swGeo.computeVertexNormals();
+
+    const swMesh = new THREE.Mesh(swGeo, this.mm.materials.sidewalk);
+    swMesh.receiveShadow = true;
+    cornerSwGroup.add(swMesh);
+
+    // 6b. Curved Curb Blocks & Protective Hedera Helix Ivy Railing along each segment
+    for (let i = 0; i < cornerCurbNodes.length - 1; i++) {
+      const p0 = cornerCurbNodes[i];
+      const p1 = cornerCurbNodes[i + 1];
+      const dx = p1.x - p0.x;
+      const dz = p1.z - p0.z;
+      const segLen = Math.sqrt(dx * dx + dz * dz);
+      const angle = Math.atan2(dx, dz) + Math.PI;
+
+      // Normal unit vector pointing outward towards sidewalk/houses
+      const nx = dz / segLen;
+      const nz = -dx / segLen;
+
+      const midX = (p0.x + p1.x) / 2;
+      const midZ = (p0.z + p1.z) / 2;
+
+      // Raised striped curb block
+      const cMesh = new THREE.Mesh(
+        new THREE.BoxGeometry(curbWidth, curbHeight + 0.01, segLen + 0.06),
+        this.mm.materials.curb
+      );
+      cMesh.position.set(midX + nx * (curbWidth / 2), (curbHeight + 0.01) / 2, midZ + nz * (curbWidth / 2));
+      cMesh.rotation.y = angle;
+      cornerSwGroup.add(cMesh);
+
+      // Steel fence post
+      const post = new THREE.Mesh(new THREE.BoxGeometry(0.08, 1.6, 0.08), postMat);
+      post.position.set(p0.x + nx * (curbWidth + 0.04), curbHeight + 0.8, p0.z + nz * (curbWidth + 0.04));
+      cornerSwGroup.add(post);
+
+      // 2 horizontal steel safety rails along the curve
+      [curbHeight + 0.35, curbHeight + 1.25].forEach(ry => {
+        const rail = new THREE.Mesh(new THREE.BoxGeometry(0.045, 0.045, segLen + 0.04), railMat);
+        rail.position.set(midX + nx * (curbWidth + 0.04), ry, midZ + nz * (curbWidth + 0.04));
+        rail.rotation.y = angle;
+        cornerSwGroup.add(rail);
+      });
+
+      // Dense Hedera Helix ivy foliage panel
+      const fol = new THREE.Mesh(new THREE.PlaneGeometry(segLen * 0.98, 1.45), foliageMat);
+      fol.position.set(midX + nx * (curbWidth + 0.04), curbHeight + 0.8, midZ + nz * (curbWidth + 0.04));
+      fol.rotation.y = angle + Math.PI / 2;
+      cornerSwGroup.add(fol);
+    }
+
+    // Terminal post at the corner junction end
+    const lastNode = cornerCurbNodes[cornerCurbNodes.length - 1];
+    const prevNode = cornerCurbNodes[cornerCurbNodes.length - 2];
+    const ldx = lastNode.x - prevNode.x;
+    const ldz = lastNode.z - prevNode.z;
+    const lLen = Math.sqrt(ldx * ldx + ldz * ldz);
+    const endPost = new THREE.Mesh(new THREE.BoxGeometry(0.08, 1.6, 0.08), postMat);
+    endPost.position.set(lastNode.x + (ldz / lLen) * (curbWidth + 0.04), curbHeight + 0.8, lastNode.z + (-ldx / lLen) * (curbWidth + 0.04));
+    cornerSwGroup.add(endPost);
+
+    this.scene.add(cornerSwGroup);
+
+    // Rounded Corner Curbs at other T-Junction corners
     const cornerCylinderGeo = new THREE.CylinderGeometry(1.5, 1.5, curbHeight + 0.02, 16, 1, false, 0, Math.PI / 2);
     // Perkasa corners
     const cNorth = new THREE.Mesh(cornerCylinderGeo, this.mm.materials.curb);
@@ -774,7 +987,7 @@ export class CityEnvironment {
       { x: -8.35, zStart: 82, zEnd: 128, side: 'west' },
       { x: -8.35, zStart: 19, zEnd: 68, side: 'west' },
       { x: -8.35, zStart: -4, zEnd: 5, side: 'west' },
-      { x: -8.35, zStart: -48, zEnd: -12, side: 'west' },
+      { x: -8.35, zStart: -47, zEnd: -12, side: 'west' },
       { x: -8.35, zStart: -82, zEnd: -180, side: 'west' },
     ];
 
@@ -895,10 +1108,15 @@ export class CityEnvironment {
       { startX: -10.2, startZ: 120, endX: -10.2, endZ: 21, baseY: 0.22, name: 'West South' },
       // West sidewalk - Mid section between Perkasa & Zebra
       { startX: -10.2, startZ: 4, endX: -10.2, endZ: -3, baseY: 0.22, name: 'West Perkasa-Zebra' },
-      // West sidewalk - Section between Zebra & Bajuri
-      { startX: -10.2, startZ: -13, endX: -10.2, endZ: -46, baseY: 0.22, name: 'West Bajuri-Zebra' },
+      // West sidewalk - Section between Zebra & Bajuri (extended past new houses)
+      { startX: -10.2, startZ: -13, endX: -10.2, endZ: -45.0, baseY: 0.22, name: 'West Bajuri-Zebra' },
       // West sidewalk - North section along Terusan Setiabudi
       { startX: -10.2, startZ: -84, endX: -10.2, endZ: -170, baseY: 0.22, name: 'West North' },
+
+      // Jl. Sersan Bajuri sidewalks (Left / South-West side)
+      { startX: -25.5, startZ: -78.0, endX: -68.0, endZ: -132.9, baseY: 0.22, name: 'Bajuri Left SW' },
+      // Jl. Sersan Bajuri sidewalks (Right / North-East side)
+      { startX: -10.0, startZ: -79.0, endX: -57.2, endZ: -141.1, baseY: 0.22, name: 'Bajuri Right NE' },
 
       // Jl. Perkasa sidewalks (Students and pedestrians entering/exiting UPI campus)
       { startX: -9.5, startZ: 5.75, endX: -45.0, endZ: 5.75, baseY: 0.82, name: 'Perkasa North UPI' },
@@ -1798,8 +2016,8 @@ export class CityEnvironment {
 
     // 2. West Side Buildings - North of Perkasa (X < -13, Z < 0)
     for (let z = -140; z <= -8; z += 18) {
-      // Skip opening for Jl. Sersan Bajuri & stub (Z ~ -48 to -115)
-      if (z > -115 && z < -48) continue;
+      // Skip opening for Jl. Sersan Bajuri mouth (Z ~ -66 to -115) and custom residential houses (Z ~ -64 to -48)
+      if (z > -115 && z < -46) continue;
 
       const width = 14;
       const depth = 16;
@@ -1815,6 +2033,12 @@ export class CityEnvironment {
       );
       signIndex++;
     }
+
+    // 2b. Gedung Rumah & Bangunan Residensial in former stub road area (Z: -48 to -64)
+    this.createWestBajuriHouses();
+
+    // 2c. Bangunan & Gedung Rumah along Jl. Sersan Bajuri (Left & Right Sides)
+    this.createSersanBajuriBuildings();
 
     // 3. West Side Buildings - South of Perkasa (X < -13, Z > 22)
     for (let z = 26; z <= 130; z += 18) {
@@ -2097,6 +2321,469 @@ export class CityEnvironment {
     this.scene.add(group);
   }
 
+  createWestBajuriHouses() {
+    // Replaces the circled stub road at Z = -58 with authentic Bandung residential houses
+    // Strictly positioned behind Setiabudi sidewalk (X <= -13.0) and south of Sersan Bajuri curve (Z >= -56.5)
+
+    // 1. Modern Tropical Residence (House 1 - Setiabudi No. 288)
+    this.createDetailedResidentialHouse(
+      -20.5,
+      -47.2,
+      5.8,
+      8.6,
+      2,
+      Math.PI / 2, // Facing East towards Setiabudi
+      {
+        frontX: -13.0,
+        wallMat: this.mm.materials.buildingWallBeige,
+        accentColor: '#4e342e',
+        roofMat: this.mm.materials.roofTileGenteng
+      }
+    );
+
+    // 2. Contemporary Minimalist Residence (House 2 - Setiabudi No. 290)
+    this.createDetailedResidentialHouse(
+      -20.5,
+      -53.4,
+      5.8,
+      8.6,
+      2,
+      Math.PI / 2, // Facing East towards Setiabudi
+      {
+        frontX: -13.0,
+        wallMat: this.mm.materials.buildingWallWhite,
+        accentColor: '#263238',
+        roofMat: this.mm.materials.roofTileGenteng
+      }
+    );
+
+    // 3. Deep-lot Family Pavilion Residence (House 3 - situated in the quiet rear courtyard)
+    this.createDetailedResidentialHouse(
+      -31.5,
+      -50.5,
+      9.0,
+      7.5,
+      2,
+      Math.PI / 2, // Facing East into private driveway courtyard
+      {
+        frontX: -23.5,
+        wallMat: this.mm.materials.buildingWallWhite,
+        accentColor: '#37474f',
+        roofMat: this.mm.materials.roofTileGenteng
+      }
+    );
+
+    // 4. Landscaped Corner Park & Angled Boundary Wall (Taman Sudut Simpang Sersan Bajuri)
+    // Seamlessly buffers the corner between Setiabudi and Sersan Bajuri without encroaching the road
+    const cornerGroup = new THREE.Group();
+
+    // Corner lawn patch
+    const cornerLawn = new THREE.Mesh(
+      new THREE.BoxGeometry(7.5, 0.14, 7.5),
+      new THREE.MeshLambertMaterial({ color: '#2d6a4f' })
+    );
+    cornerLawn.position.set(-17.0, 0.07, -59.8);
+    cornerGroup.add(cornerLawn);
+
+    // Angled decorative stone perimeter wall following street curve (from X=-13.0, Z=-56.5 to X=-19.0, Z=-63.0)
+    const wallLen = 9.0;
+    const wallAngle = Math.atan2(-63.0 - (-56.5), -19.0 - (-13.0));
+    const angledWall = new THREE.Mesh(
+      new THREE.BoxGeometry(wallLen, 1.1, 0.25),
+      new THREE.MeshStandardMaterial({ color: '#455a64', roughness: 0.7 })
+    );
+    angledWall.position.set(-16.0, 0.55, -59.75);
+    angledWall.rotation.y = -wallAngle;
+    cornerGroup.add(angledWall);
+
+    // Decorative stone pillars along the corner boundary
+    const pillarMat = new THREE.MeshStandardMaterial({ color: '#263238', roughness: 0.6 });
+    [-wallLen / 2, 0, wallLen / 2].forEach(d => {
+      const p = new THREE.Mesh(new THREE.BoxGeometry(0.4, 1.35, 0.4), pillarMat);
+      p.position.set(-16.0 + Math.cos(-wallAngle) * d, 0.67, -59.75 - Math.sin(-wallAngle) * d);
+      cornerGroup.add(p);
+    });
+
+    this.scene.add(cornerGroup);
+
+    // Ornamental trees inside corner park and yards (safely set back from road curb)
+    this.createTree(-16.5, -58.5, 'ketapang');
+    this.createTree(-18.5, -61.5, 'palm');
+    this.createTree(-27.0, -50.5, 'ketapang');
+  }
+
+  createDetailedResidentialHouse(x, z, width, depth, stories = 2, rotY = 0, options = {}) {
+    const group = new THREE.Group();
+    const wallHeight = stories * 3.2;
+
+    const cpW = width * 0.46;
+    const cpD = 3.6;
+
+    // 1. Foundation / Plinth
+    const plinthH = 0.22;
+    const plinthGeo = new THREE.BoxGeometry(width, plinthH, depth);
+    const plinth = new THREE.Mesh(plinthGeo, this.mm.materials.buildingWallGrey);
+    plinth.position.y = plinthH / 2;
+    group.add(plinth);
+
+    // 2. Main Wall Body
+    const wallMats = [
+      this.mm.materials.buildingWallWhite,
+      this.mm.materials.buildingWallBeige,
+      this.mm.materials.buildingWallGrey
+    ];
+    const mainWallMat = options.wallMat || wallMats[Math.floor(Math.random() * wallMats.length)];
+    const bodyGeo = new THREE.BoxGeometry(width, wallHeight, depth);
+    const body = new THREE.Mesh(bodyGeo, mainWallMat);
+    body.position.y = plinthH + wallHeight / 2;
+    body.castShadow = true;
+    body.receiveShadow = true;
+    group.add(body);
+
+    // Architectural accent panel (wood slats / charcoal texture) on one side
+    const accentW = width * 0.42;
+    const accentGeo = new THREE.BoxGeometry(accentW, wallHeight * 0.95, 0.15);
+    const accentMat = new THREE.MeshStandardMaterial({
+      color: options.accentColor || '#3e2723',
+      roughness: 0.7,
+      metalness: 0.1
+    });
+    const accent = new THREE.Mesh(accentGeo, accentMat);
+    accent.position.set(-width * 0.25, plinthH + wallHeight / 2, depth / 2 + 0.08);
+    group.add(accent);
+
+    // 3. Limasan / Hip Roof (Indonesian clay genteng)
+    const roofH = 2.6;
+    const roofOverhang = 0.5;
+    const roofGeo = new THREE.ConeGeometry(Math.max(width, depth) * 0.76, roofH, 4);
+    const roofMat = options.roofMat || this.mm.materials.roofTileGenteng;
+    const roof = new THREE.Mesh(roofGeo, roofMat);
+    roof.position.y = plinthH + wallHeight + roofH / 2;
+    roof.rotation.y = Math.PI / 4;
+    roof.scale.set((width + roofOverhang) / Math.max(width, depth), 1, (depth + roofOverhang) / Math.max(width, depth));
+    roof.castShadow = true;
+    group.add(roof);
+
+    // Fascia board under roof eaves
+    const fasciaGeo = new THREE.BoxGeometry(width + roofOverhang, 0.16, depth + roofOverhang);
+    const fasciaMat = new THREE.MeshLambertMaterial({ color: '#2c3034' });
+    const fascia = new THREE.Mesh(fasciaGeo, fasciaMat);
+    fascia.position.y = plinthH + wallHeight + 0.08;
+    group.add(fascia);
+
+    // 4. Ground Floor Porch (Teras Depan)
+    const porchW = width * 0.48;
+    const porchD = 1.8;
+    const porchFloor = new THREE.Mesh(
+      new THREE.BoxGeometry(porchW, 0.16, porchD),
+      this.mm.materials.sidewalk
+    );
+    porchFloor.position.set(width * 0.24, 0.08, depth / 2 + porchD / 2);
+    group.add(porchFloor);
+
+    // Porch canopy
+    const canopyMesh = new THREE.Mesh(
+      new THREE.BoxGeometry(porchW + 0.2, 0.12, porchD + 0.2),
+      new THREE.MeshLambertMaterial({ color: '#222629' })
+    );
+    canopyMesh.position.set(width * 0.24, 3.0, depth / 2 + porchD / 2);
+    group.add(canopyMesh);
+
+    // Porch pillars
+    [-porchW / 2 + 0.15, porchW / 2 - 0.15].forEach(px => {
+      const pillar = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.06, 0.06, 2.9, 8),
+        this.mm.materials.metalPole
+      );
+      pillar.position.set(width * 0.24 + px, 1.45, depth / 2 + porchD - 0.12);
+      group.add(pillar);
+    });
+
+    // Front entrance door
+    const doorMesh = new THREE.Mesh(
+      new THREE.PlaneGeometry(1.0, 2.2),
+      new THREE.MeshStandardMaterial({ color: '#4e342e', roughness: 0.6 })
+    );
+    doorMesh.position.set(width * 0.24, plinthH + 1.15, depth / 2 + 0.05);
+    group.add(doorMesh);
+
+    // 5. 2nd Floor Balcony with modern railing
+    if (stories >= 2) {
+      const balcW = width * 0.46;
+      const balcD = 1.4;
+      const balcSlab = new THREE.Mesh(
+        new THREE.BoxGeometry(balcW, 0.18, balcD),
+        this.mm.materials.buildingWallGrey
+      );
+      balcSlab.position.set(-width * 0.24, 3.3, depth / 2 + balcD / 2);
+      group.add(balcSlab);
+
+      // Balcony black steel railing
+      const railMat = new THREE.MeshStandardMaterial({ color: '#1a1a1a', roughness: 0.5, metalness: 0.6 });
+      const topRail = new THREE.Mesh(new THREE.BoxGeometry(balcW, 0.04, 0.04), railMat);
+      topRail.position.set(-width * 0.24, 4.25, depth / 2 + balcD);
+      group.add(topRail);
+
+      // Glass railing infill
+      const glassRail = new THREE.Mesh(new THREE.PlaneGeometry(balcW - 0.15, 0.8), this.mm.materials.windowGlass);
+      glassRail.position.set(-width * 0.24, 3.85, depth / 2 + balcD);
+      group.add(glassRail);
+
+      // Sliding balcony door
+      const balcDoor = new THREE.Mesh(new THREE.PlaneGeometry(1.6, 2.0), this.mm.materials.windowGlass);
+      balcDoor.position.set(-width * 0.24, 4.4, depth / 2 + 0.05);
+      group.add(balcDoor);
+      this.nightWindows.push(balcDoor);
+    }
+
+    // Windows (Ground floor & Upper floor)
+    const win1 = new THREE.Mesh(new THREE.PlaneGeometry(1.6, 1.3), this.mm.materials.windowGlass);
+    win1.position.set(-width * 0.25, plinthH + 1.5, depth / 2 + 0.18);
+    group.add(win1);
+    this.nightWindows.push(win1);
+
+    if (stories >= 2) {
+      const win2 = new THREE.Mesh(new THREE.PlaneGeometry(1.6, 1.3), this.mm.materials.windowGlass);
+      win2.position.set(width * 0.24, plinthH + 4.6, depth / 2 + 0.05);
+      group.add(win2);
+      this.nightWindows.push(win2);
+    }
+
+    // 6. Carport & Pergola
+    const cpFloor = new THREE.Mesh(
+      new THREE.BoxGeometry(cpW, 0.06, cpD),
+      this.mm.materials.asphalt
+    );
+    cpFloor.position.set(-width * 0.24, 0.03, depth / 2 + cpD / 2);
+    group.add(cpFloor);
+
+    // Carport steel pergola trellis
+    const pergolaMat = new THREE.MeshStandardMaterial({ color: '#263238', metalness: 0.7, roughness: 0.4 });
+    [-cpW / 2 + 0.12, cpW / 2 - 0.12].forEach(postX => {
+      const post = new THREE.Mesh(new THREE.BoxGeometry(0.1, 2.6, 0.1), pergolaMat);
+      post.position.set(-width * 0.24 + postX, 1.3, depth / 2 + cpD - 0.12);
+      group.add(post);
+    });
+    for (let bz = depth / 2 + 0.8; bz <= depth / 2 + cpD; bz += 0.8) {
+      const beam = new THREE.Mesh(new THREE.BoxGeometry(cpW + 0.1, 0.06, 0.06), pergolaMat);
+      beam.position.set(-width * 0.24, 2.6, bz);
+      group.add(beam);
+    }
+
+    // 7. Front Perimeter Wall & Gate (strictly bounded to house width)
+    const fenceMat = new THREE.MeshStandardMaterial({ color: '#455a64', roughness: 0.7 });
+    const fWall = new THREE.Mesh(new THREE.BoxGeometry(width, 1.1, 0.22), fenceMat);
+    fWall.position.set(0, 0.55, depth / 2 + cpD + 0.15);
+    group.add(fWall);
+
+    // Gate pillars
+    const gatePostMat = new THREE.MeshStandardMaterial({ color: '#263238', roughness: 0.6 });
+    [-width * 0.42, 0, width * 0.42].forEach(gpx => {
+      const gPost = new THREE.Mesh(new THREE.BoxGeometry(0.35, 1.35, 0.35), gatePostMat);
+      gPost.position.set(gpx, 0.67, depth / 2 + cpD + 0.15);
+      group.add(gPost);
+    });
+
+    // Set position ensuring front fence is at options.frontX (if provided)
+    const posX = (options.frontX !== undefined && rotY === Math.PI / 2)
+      ? (options.frontX - (depth / 2 + cpD + 0.15))
+      : x;
+
+    group.position.set(posX, 0, z);
+    group.rotation.y = rotY;
+    this.scene.add(group);
+    return group;
+  }
+
+  createSersanBajuriBuildings() {
+    // Residential buildings and shophouses along both sides of Jl. Sersan Bajuri
+    // Road orientation: angle 0.65 rad. Center: (-36, 0, -102).
+    const bajuriBldgGroup = new THREE.Group();
+    bajuriBldgGroup.position.set(-36, 0, -102);
+    bajuriBldgGroup.rotation.y = 0.65 + Math.PI;
+
+    // --- South-West Side (Left Side, local +X = 16.0m behind sidewalk) ---
+    // Facing road (rotation.y = -Math.PI / 2)
+    const leftHouses = [
+      { z: -14, w: 12, d: 13, h: 2, mat: this.mm.materials.buildingWallBeige },
+      { z: 10, w: 13, d: 14, h: 2, mat: this.mm.materials.buildingWallWhite },
+      { z: 34, w: 12, d: 13, h: 2, mat: this.mm.materials.buildingWallGrey }
+    ];
+    for (const item of leftHouses) {
+      const hMesh = this.createBajuriHouseModel(item.w, item.d, item.h, item.mat);
+      hMesh.position.set(16.5, 0, item.z);
+      hMesh.rotation.y = -Math.PI / 2;
+      bajuriBldgGroup.add(hMesh);
+    }
+
+    // --- North-East Side (Right Side, local -X = -16.0m behind sidewalk) ---
+    // Facing road (rotation.y = Math.PI / 2)
+    const rightHouses = [
+      { z: -8, w: 12, d: 13, h: 2, mat: this.mm.materials.buildingWallWhite },
+      { z: 14, w: 13, d: 14, h: 2, mat: this.mm.materials.buildingWallBeige },
+      { z: 36, w: 12, d: 13, h: 2, mat: this.mm.materials.buildingWallGrey }
+    ];
+    for (const item of rightHouses) {
+      const hMesh = this.createBajuriHouseModel(item.w, item.d, item.h, item.mat);
+      hMesh.position.set(-16.5, 0, item.z);
+      hMesh.rotation.y = Math.PI / 2;
+      bajuriBldgGroup.add(hMesh);
+    }
+
+    // Street Lamps (PJU) along Sersan Bajuri sidewalks (Left & Right)
+    for (let lz = -36; lz <= 40; lz += 26) {
+      // Left sidewalk lamp (pole at X = 7.5, arm points towards road -X)
+      const lampL = this.createBajuriPjuLamp();
+      lampL.position.set(7.5, 0.22, lz);
+      lampL.rotation.y = Math.PI; // arm points -X (towards road)
+      bajuriBldgGroup.add(lampL);
+
+      // Right sidewalk lamp (pole at X = -7.5, arm points towards road +X)
+      const lampR = this.createBajuriPjuLamp();
+      lampR.position.set(-7.5, 0.22, lz);
+      lampR.rotation.y = 0; // arm points +X (towards road)
+      bajuriBldgGroup.add(lampR);
+    }
+
+    // Shady trees along Sersan Bajuri sidewalks
+    for (let tz = -30; tz <= 38; tz += 22) {
+      const treeL = this.createTreeModel('ketapang');
+      treeL.position.set(7.6, 0.22, tz);
+      bajuriBldgGroup.add(treeL);
+
+      const treeR = this.createTreeModel('ketapang');
+      treeR.position.set(-7.6, 0.22, tz + 11);
+      bajuriBldgGroup.add(treeR);
+    }
+
+    this.scene.add(bajuriBldgGroup);
+  }
+
+  createBajuriHouseModel(width, depth, stories = 2, wallMat) {
+    const group = new THREE.Group();
+    const wallHeight = stories * 3.3;
+
+    // Body
+    const body = new THREE.Mesh(
+      new THREE.BoxGeometry(width, wallHeight, depth),
+      wallMat || this.mm.materials.buildingWallWhite
+    );
+    body.position.y = wallHeight / 2;
+    body.castShadow = true;
+    body.receiveShadow = true;
+    group.add(body);
+
+    // Hip Roof (Genteng)
+    const roofH = 2.6;
+    const roof = new THREE.Mesh(
+      new THREE.ConeGeometry(Math.max(width, depth) * 0.78, roofH, 4),
+      this.mm.materials.roofTileGenteng
+    );
+    roof.position.y = wallHeight + roofH / 2;
+    roof.rotation.y = Math.PI / 4;
+    roof.scale.set((width + 0.8) / Math.max(width, depth), 1, (depth + 0.8) / Math.max(width, depth));
+    roof.castShadow = true;
+    group.add(roof);
+
+    // Balcony / Porch canopy
+    const canopy = new THREE.Mesh(
+      new THREE.BoxGeometry(width * 0.55, 0.16, 2.0),
+      new THREE.MeshLambertMaterial({ color: '#2c3034' })
+    );
+    canopy.position.set(0, 3.2, depth / 2 + 1.0);
+    group.add(canopy);
+
+    // Door
+    const door = new THREE.Mesh(
+      new THREE.PlaneGeometry(1.2, 2.2),
+      new THREE.MeshStandardMaterial({ color: '#3e2723', roughness: 0.6 })
+    );
+    door.position.set(0, 1.15, depth / 2 + 0.05);
+    group.add(door);
+
+    // Front Windows
+    [-width * 0.28, width * 0.28].forEach(wx => {
+      const win1 = new THREE.Mesh(new THREE.PlaneGeometry(1.6, 1.4), this.mm.materials.windowGlass);
+      win1.position.set(wx, 1.6, depth / 2 + 0.05);
+      group.add(win1);
+      this.nightWindows.push(win1);
+
+      if (stories >= 2) {
+        const win2 = new THREE.Mesh(new THREE.PlaneGeometry(1.6, 1.4), this.mm.materials.windowGlass);
+        win2.position.set(wx, 4.6, depth / 2 + 0.05);
+        group.add(win2);
+        this.nightWindows.push(win2);
+      }
+    });
+
+    // Front yard fence
+    const fenceMat = new THREE.MeshStandardMaterial({ color: '#455a64', roughness: 0.7 });
+    const fence = new THREE.Mesh(new THREE.BoxGeometry(width + 1.0, 1.1, 0.25), fenceMat);
+    fence.position.set(0, 0.55, depth / 2 + 4.0);
+    group.add(fence);
+
+    return group;
+  }
+
+  createBajuriPjuLamp() {
+    const group = new THREE.Group();
+    // Vertical metal pole (height 6.5m)
+    const poleGeo = new THREE.CylinderGeometry(0.08, 0.12, 6.5, 10);
+    const pole = new THREE.Mesh(poleGeo, this.mm.materials.metalPole);
+    pole.position.y = 3.25;
+    pole.castShadow = true;
+    group.add(pole);
+
+    // Curved horizontal overhanging arm extending towards street (length 2.2m)
+    const armGeo = new THREE.CylinderGeometry(0.05, 0.07, 2.2, 8);
+    const arm = new THREE.Mesh(armGeo, this.mm.materials.metalPole);
+    arm.position.set(0.9, 6.3, 0);
+    arm.rotation.z = Math.PI / 2.3;
+    group.add(arm);
+
+    // Lamp fixture head
+    const fixtureGeo = new THREE.BoxGeometry(0.8, 0.18, 0.35);
+    const fixture = new THREE.Mesh(fixtureGeo, this.mm.materials.streetLampFixture);
+    fixture.position.set(1.9, 6.6, 0);
+    group.add(fixture);
+
+    // Glowing LED luminaire underside
+    const bulbGeo = new THREE.PlaneGeometry(0.65, 0.25);
+    const bulb = new THREE.Mesh(bulbGeo, this.mm.materials.streetLampBulb);
+    bulb.rotation.x = Math.PI / 2;
+    bulb.position.set(1.9, 6.5, 0);
+    group.add(bulb);
+
+    return group;
+  }
+
+  createTreeModel(type = 'ketapang') {
+    const group = new THREE.Group();
+    if (type === 'ketapang') {
+      const trunkH = 5.2;
+      const trunkGeo = new THREE.CylinderGeometry(0.18, 0.28, trunkH, 8);
+      const trunk = new THREE.Mesh(trunkGeo, this.mm.materials.trunk);
+      trunk.position.y = trunkH / 2;
+      trunk.castShadow = true;
+      group.add(trunk);
+
+      const tiers = [
+        { y: 3.5, r: 1.7, h: 0.65, mat: this.mm.materials.foliageGreen1 },
+        { y: 4.5, r: 1.3, h: 0.55, mat: this.mm.materials.foliageGreen2 },
+        { y: 5.4, r: 0.9, h: 0.45, mat: this.mm.materials.foliageGreen3 }
+      ];
+
+      tiers.forEach(tier => {
+        const fGeo = new THREE.CylinderGeometry(tier.r * 0.45, tier.r, tier.h, 9);
+        const fMesh = new THREE.Mesh(fGeo, tier.mat);
+        fMesh.position.y = tier.y;
+        fMesh.castShadow = true;
+        group.add(fMesh);
+      });
+    }
+    return group;
+  }
+
   createVegetation() {
     // Trees along East Sidewalk (set back at X = 13.5, safe from curb at X = 8.0)
     for (let z = -120; z <= 120; z += 24) {
@@ -2107,8 +2794,8 @@ export class CityEnvironment {
 
     // Trees along West Sidewalk (set back at X = -13.5, safe from curb at X = -8.0)
     for (let z = -140; z <= 120; z += 24) {
-      // Exclude openings for Sersan Bajuri & stub (Z: -125 to -45), Perkasa (Z: 0 to 24), Moh Yamin West (Z: 62 to 88), and Zebra crossing (Z: -14 to -2)
-      if ((z >= -125 && z <= -45) || (z >= 0 && z <= 24) || (z >= 62 && z <= 88) || (z >= -14 && z <= -2)) continue;
+      // Exclude openings for Sersan Bajuri (Z: -125 to -65), Perkasa (Z: 0 to 24), Moh Yamin West (Z: 62 to 88), and Zebra crossing (Z: -14 to -2)
+      if ((z >= -125 && z <= -65) || (z >= 0 && z <= 24) || (z >= 62 && z <= 88) || (z >= -14 && z <= -2)) continue;
       this.createTree(-13.5, z, z < 0 ? 'ketapang' : 'angsana');
     }
 
