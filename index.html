@@ -114,6 +114,15 @@
 
         <div class="header-vsep"></div>
 
+        <!-- AI VISION CCTV DETECTION BUTTON -->
+        <button class="ai-vision-nav-btn" id="btn-toggle-ai-vision" title="Buka Deteksi Kendaraan AI CCTV (Computer Vision dengan Input Video)">
+          <i class="fa-solid fa-brain"></i>
+          <span>AI Vision CCTV</span>
+          <span class="ai-badge-pill">AI LIVE</span>
+        </button>
+
+        <div class="header-vsep"></div>
+
         <div class="status-pill simpang-apill-pill" id="simpang-apill-badge" title="Siklus Lampu Merah Simpang 3 Setiabudi – Terusan – Sersan Bajuri">
           <i class="fa-solid fa-traffic-light" id="simpang-apill-icon" style="color: #10b981;"></i>
           <span id="simpang-apill-text">Setiabudi 🟢 80s | Bajuri 🔴 80s</span>
@@ -476,6 +485,185 @@
         <span class="modal-footer-caption"><i class="fa-solid fa-graduation-cap"></i> Program Studi Pendidikan Fisika • FPMIPA • Universitas Pendidikan Indonesia</span>
         <button class="btn-primary-action btn-modal-dismiss" id="btn-dismiss-report">Mengerti & Tutup</button>
       </div>
+    </div>
+  </div>
+
+  <!-- AI VISION CCTV VEHICLE DETECTION MODAL -->
+  <div id="ai-vision-modal" class="ai-modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="ai-modal-title">
+    <div class="ai-modal-container glass-card">
+      
+      <!-- Modal Header -->
+      <div class="ai-modal-header">
+        <div class="ai-header-title-group">
+          <div class="ai-icon-chip">
+            <i class="fa-solid fa-brain"></i>
+          </div>
+          <div>
+            <h2 id="ai-modal-title">AI Computer Vision • Deteksi Kendaraan & Survei CCTV</h2>
+            <p class="ai-header-subtitle">Deteksi otomatis Mobil, Motor, Angkot/Bus, dan Truk berbasis Deep Learning (TensorFlow.js COCO-SSD)</p>
+          </div>
+        </div>
+        
+        <div class="ai-header-right">
+          <div class="ai-status-pill" id="ai-status-badge">
+            <span class="ai-status-dot dot-loading"></span>
+            <span>Memuat Model AI...</span>
+          </div>
+          <button class="ai-close-btn" id="btn-close-ai-vision" title="Tutup Modal (Esc)">
+            <i class="fa-solid fa-xmark"></i>
+          </button>
+        </div>
+      </div>
+
+      <!-- Modal Body (Grid: Video Canvas + Telemetry Sidebar) -->
+      <div class="ai-modal-body">
+        
+        <!-- Left Column: Video Viewport & Annotations -->
+        <div class="ai-viewport-card">
+          <div class="ai-viewport-wrapper" id="ai-viewport-wrapper">
+            <video id="ai-video-feed" playsinline muted loop></video>
+            <canvas id="ai-overlay-canvas"></canvas>
+            
+            <!-- Corner HUD Overlays -->
+            <div class="ai-viewport-top-hud">
+              <div class="ai-hud-chip"><i class="fa-solid fa-gauge-high"></i> <span id="ai-fps-counter">0 FPS</span></div>
+              <div class="ai-hud-chip"><i class="fa-solid fa-microchip"></i> <span id="ai-lat-counter">0 ms</span></div>
+              <div class="ai-hud-chip chip-cyan"><i class="fa-solid fa-eye"></i> <span id="ai-onscreen-counter">0</span> di Layar</div>
+            </div>
+
+            <!-- File Upload Dropzone Prompt (shown in 'file' source mode when no video yet) -->
+            <div class="ai-upload-prompt" id="ai-upload-container" style="display: none;">
+              <i class="fa-solid fa-cloud-arrow-up upload-big-icon"></i>
+              <h3>Unggah Rekaman Video CCTV Lalu Lintas</h3>
+              <p>Format yang didukung: MP4, WebM, QuickTime (.mov). Beban analisis diproses 100% lokal di browser Anda dengan akselerasi GPU WebGL.</p>
+              <label for="ai-file-input" class="ai-upload-btn">
+                <i class="fa-solid fa-folder-open"></i> Pilih File Video
+              </label>
+              <input type="file" id="ai-file-input" accept="video/*" style="display: none;">
+            </div>
+          </div>
+
+          <!-- Playback & Quick Controls Bar -->
+          <div class="ai-player-controls">
+            <div class="ai-controls-left">
+              <button class="ai-ctrl-btn btn-primary" id="btn-ai-play-pause">
+                <i class="fa-solid fa-pause"></i> <span>Jeda Deteksi</span>
+              </button>
+              <button class="ai-ctrl-btn" id="btn-ai-snapshot" title="Simpan Gambar Tangkapan Deteksi">
+                <i class="fa-solid fa-camera"></i> <span>Screenshot</span>
+              </button>
+              <button class="ai-ctrl-btn" id="btn-ai-reset-counts" title="Reset Hitungan ke 0">
+                <i class="fa-solid fa-rotate-left"></i> <span>Reset</span>
+              </button>
+            </div>
+
+            <div class="ai-controls-right">
+              <button class="ai-ctrl-btn btn-export" id="btn-ai-export-log" title="Unduh Rekapitulasi Data (CSV)">
+                <i class="fa-solid fa-file-csv"></i> <span>Unduh CSV</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Right Column: Settings, Counter Cards & Event Stream -->
+        <div class="ai-sidebar-card">
+          
+          <!-- 1. Source Switcher -->
+          <div class="ai-section">
+            <label class="ai-section-title"><i class="fa-solid fa-video"></i> Sumber Input Video:</label>
+            <div class="ai-source-tabs" role="tablist">
+              <button class="ai-src-btn active" data-source="live3d" title="Feed Langsung dari Kamera 3D Simulasi">
+                <i class="fa-solid fa-cube"></i> Simulasi 3D
+              </button>
+              <button class="ai-src-btn" data-source="demo" title="Rekaman Simulasi CCTV Simpang Setiabudi">
+                <i class="fa-solid fa-film"></i> CCTV Demo
+              </button>
+              <button class="ai-src-btn" data-source="file" title="Unggah File Video Sendiri">
+                <i class="fa-solid fa-upload"></i> Unggah File
+              </button>
+              <button class="ai-src-btn" data-source="webcam" title="Kamera Langsung / Webcam">
+                <i class="fa-solid fa-camera-web"></i> Webcam
+              </button>
+            </div>
+          </div>
+
+          <!-- 2. Realtime Counting Cards (Survei Otomatis) -->
+          <div class="ai-section">
+            <div class="ai-section-header-flex">
+              <label class="ai-section-title"><i class="fa-solid fa-chart-pie"></i> Penghitung Kendaraan Melintas:</label>
+              <span class="ai-badge-total">TOTAL: <strong id="cnt-total">0</strong></span>
+            </div>
+            <div class="ai-counter-grid">
+              <div class="ai-count-box box-car">
+                <div class="box-icon"><i class="fa-solid fa-car"></i></div>
+                <div class="box-data">
+                  <span class="box-num" id="cnt-car">0</span>
+                  <span class="box-lbl">Mobil</span>
+                </div>
+              </div>
+              <div class="ai-count-box box-motor">
+                <div class="box-icon"><i class="fa-solid fa-motorcycle"></i></div>
+                <div class="box-data">
+                  <span class="box-num" id="cnt-motor">0</span>
+                  <span class="box-lbl">Sepeda Motor</span>
+                </div>
+              </div>
+              <div class="ai-count-box box-bus">
+                <div class="box-icon"><i class="fa-solid fa-bus"></i></div>
+                <div class="box-data">
+                  <span class="box-num" id="cnt-bus">0</span>
+                  <span class="box-lbl">Angkot / Bus</span>
+                </div>
+              </div>
+              <div class="ai-count-box box-truck">
+                <div class="box-icon"><i class="fa-solid fa-truck"></i></div>
+                <div class="box-data">
+                  <span class="box-num" id="cnt-truck">0</span>
+                  <span class="box-lbl">Truk</span>
+                </div>
+              </div>
+              <div class="ai-count-box box-person">
+                <div class="box-icon"><i class="fa-solid fa-person-walking"></i></div>
+                <div class="box-data">
+                  <span class="box-num" id="cnt-person">0</span>
+                  <span class="box-lbl">Pejalan Kaki</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 3. AI Tuning Sliders -->
+          <div class="ai-section">
+            <label class="ai-section-title"><i class="fa-solid fa-sliders"></i> Pengaturan Detektor:</label>
+            <div class="ai-slider-row">
+              <div class="slider-meta">
+                <span>Ambang Batas Kepercayaan (Confidence):</span>
+                <strong id="ai-conf-val">40%</strong>
+              </div>
+              <input type="range" id="ai-conf-slider" min="20" max="85" value="40" class="ai-range-input">
+            </div>
+            <div class="ai-slider-row">
+              <div class="slider-meta">
+                <span>Posisi Garis Deteksi (Virtual Line Y):</span>
+                <strong id="ai-line-val">55%</strong>
+              </div>
+              <input type="range" id="ai-line-slider" min="15" max="85" value="55" class="ai-range-input">
+            </div>
+          </div>
+
+          <!-- 4. Detection Event Stream Log -->
+          <div class="ai-section ai-events-section">
+            <label class="ai-section-title"><i class="fa-solid fa-list-check"></i> Log Deteksi Real-time:</label>
+            <div class="ai-event-stream" id="ai-event-stream">
+              <div class="ai-log-entry ai-log-placeholder">
+                <span>Menunggu kendaraan melintasi garis deteksi...</span>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
     </div>
   </div>
 

@@ -6,6 +6,7 @@ import { VehicleFactory } from './vehicles/vehicleFactory.js';
 import { TrafficSystem } from './vehicles/trafficSystem.js';
 import { PedestrianSystem } from './pedestrians/pedestrianSystem.js';
 import { HUDManager } from './ui/hud.js';
+import { VehicleDetector } from './ai/vehicleDetector.js';
 
 export class TrafficSimulationApp {
   constructor() {
@@ -74,6 +75,7 @@ export class TrafficSimulationApp {
     this.pedestrianSystem = new PedestrianSystem(this.scene, this.trafficSystem, this.environment);
     this.trafficSystem.setPedestrianSystem(this.pedestrianSystem); // Bidirectional link for green wave corridor
     this.hud = new HUDManager(this);
+    this.vehicleDetector = new VehicleDetector(this);
 
     // Initial lighting state
     this.lightingMode = 'day';
