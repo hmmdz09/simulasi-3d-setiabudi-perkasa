@@ -626,67 +626,36 @@
             </div>
           </div>
 
-          <!-- 2. Realtime Counting Cards (Survei Otomatis) -->
+          <!-- 2. Realtime Counting Cards (Survei Total Kendaraan: Mobil & Motor) -->
           <div class="ai-section">
             <div class="ai-section-header-flex">
-              <label class="ai-section-title"><i class="fa-solid fa-chart-pie"></i> Penghitung Kendaraan Melintas:</label>
-              <span class="ai-badge-total">TOTAL: <strong id="cnt-total">0</strong></span>
+              <label class="ai-section-title"><i class="fa-solid fa-chart-pie"></i> Jumlah Kendaraan Melintas:</label>
             </div>
 
-            <!-- Directional Flow Badges -->
-            <div class="ai-direction-flow-row">
-              <div class="ai-flow-chip chip-up" title="Kendaraan mengarah ke utara (arah Lembang / atas)">
-                <i class="fa-solid fa-arrow-up"></i> <span>Arah Lembang:</span> <strong id="cnt-dir-up">0</strong>
+            <!-- Big Prominent Total Card -->
+            <div class="ai-total-summary-card">
+              <div class="total-lead">
+                <i class="fa-solid fa-calculator"></i>
+                <span>TOTAL KENDARAAN MELINTAS:</span>
               </div>
-              <div class="ai-flow-chip chip-down" title="Kendaraan mengarah ke selatan (arah Bandung / bawah)">
-                <i class="fa-solid fa-arrow-down"></i> <span>Arah Bandung:</span> <strong id="cnt-dir-down">0</strong>
-              </div>
+              <div class="total-big-number" id="cnt-total">0</div>
             </div>
 
-            <!-- Category Grid with Active Filter Checkboxes -->
-            <div class="ai-counter-grid">
-              <div class="ai-count-box box-car active" data-class="car" title="Klik untuk memfilter deteksi Mobil">
-                <div class="box-check"><i class="fa-solid fa-check"></i></div>
-                <div class="box-icon"><i class="fa-solid fa-car"></i></div>
-                <div class="box-data">
-                  <span class="box-num" id="cnt-car">0</span>
-                  <span class="box-lbl">Mobil</span>
+            <!-- Two Focused Categories: Mobil & Sepeda Motor -->
+            <div class="ai-counter-grid-duo">
+              <div class="ai-count-box-lg box-car" id="card-cnt-car" title="Semua Kendaraan Roda 4+ (Mobil, Taksi, dsb)">
+                <div class="box-icon-lg"><i class="fa-solid fa-car"></i></div>
+                <div class="box-data-lg">
+                  <span class="box-num-lg" id="cnt-car">0</span>
+                  <span class="box-lbl-lg">Mobil</span>
                 </div>
               </div>
 
-              <div class="ai-count-box box-motor active" data-class="motorcycle" title="Klik untuk memfilter deteksi Sepeda Motor">
-                <div class="box-check"><i class="fa-solid fa-check"></i></div>
-                <div class="box-icon"><i class="fa-solid fa-motorcycle"></i></div>
-                <div class="box-data">
-                  <span class="box-num" id="cnt-motor">0</span>
-                  <span class="box-lbl">Sepeda Motor</span>
-                </div>
-              </div>
-
-              <div class="ai-count-box box-bus active" data-class="bus" title="Klik untuk memfilter deteksi Angkot & Bus">
-                <div class="box-check"><i class="fa-solid fa-check"></i></div>
-                <div class="box-icon"><i class="fa-solid fa-bus"></i></div>
-                <div class="box-data">
-                  <span class="box-num" id="cnt-bus">0</span>
-                  <span class="box-lbl">Angkot / Bus</span>
-                </div>
-              </div>
-
-              <div class="ai-count-box box-truck active" data-class="truck" title="Klik untuk memfilter deteksi Truk">
-                <div class="box-check"><i class="fa-solid fa-check"></i></div>
-                <div class="box-icon"><i class="fa-solid fa-truck"></i></div>
-                <div class="box-data">
-                  <span class="box-num" id="cnt-truck">0</span>
-                  <span class="box-lbl">Truk</span>
-                </div>
-              </div>
-
-              <div class="ai-count-box box-person active" data-class="person" title="Klik untuk memfilter deteksi Pejalan Kaki">
-                <div class="box-check"><i class="fa-solid fa-check"></i></div>
-                <div class="box-icon"><i class="fa-solid fa-person-walking"></i></div>
-                <div class="box-data">
-                  <span class="box-num" id="cnt-person">0</span>
-                  <span class="box-lbl">Pejalan Kaki</span>
+              <div class="ai-count-box-lg box-motor" id="card-cnt-motor" title="Semua Kendaraan Roda 2 (Sepeda Motor)">
+                <div class="box-icon-lg"><i class="fa-solid fa-motorcycle"></i></div>
+                <div class="box-data-lg">
+                  <span class="box-num-lg" id="cnt-motor">0</span>
+                  <span class="box-lbl-lg">Sepeda Motor</span>
                 </div>
               </div>
             </div>
