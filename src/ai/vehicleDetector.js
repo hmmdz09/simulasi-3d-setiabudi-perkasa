@@ -20,11 +20,17 @@ export class VehicleDetector {
     this.viewportWrapper = null;
     this.uploadContainer = null;
 
-    // YOLO Pre-processing Offscreen Canvas (640x640 standard YOLO input)
+    // YOLO Pre-processing Offscreen Canvas (640x640 with proper letterboxing)
     this.yoloCanvas = document.createElement('canvas');
     this.yoloCanvas.width = 640;
     this.yoloCanvas.height = 640;
     this.yoloCtx = this.yoloCanvas.getContext('2d', { willReadFrequently: true });
+
+    // Pre-allocated Float32Array buffer (avoids 4.8MB garbage collection per frame!)
+    this.floatArr = new Float32Array(3 * 640 * 640);
+
+    // Letterbox metadata for current frame
+    this.letterbox = { scale: 1, padX: 0, padY: 0 };
 
     // Detection & Loop State
     this.isRunning = false;
@@ -38,8 +44,10 @@ export class VehicleDetector {
     this.webcamStream = null;
     this.live3dStream = null;
 
-    // Performance & Telemetry
-    this.confidenceThreshold = 0.35;
+    // Default Confidence: 20% (Optimized for traffic CCTV surveillance)
+    this.confidenceThreshold = 0.20;
+    this.showTrails = true;
+    this.showSpeed = true;
     this.lastRenderTime = performance.now();
     this.fps = 0;
     this.latency = 0;
@@ -51,8 +59,8 @@ export class VehicleDetector {
     this.lineFlashUntil = 0;
     this.isDraggingLine = false;
 
-    // Tracking for Counting (Avoid duplicates)
-    this.trackedVehicles = new Map(); // id -> { id, cx, cy, class, score, lastSeen, counted }
+    // Tracking for Counting with Real-Time Velocity Extrapolation (Zero-Lag Tracker)
+    this.trackedVehicles = new Map(); // id -> { id, cx, cy, w, h, vx, vy, class, score, lastSeen, counted }
     this.nextTrackId = 1;
 
     // Cumulative Counts (Total, Mobil, Sepeda Motor)
@@ -92,14 +100,12 @@ export class VehicleDetector {
     this.updateStatusBadge('Memuat Model YOLO AI...', 'loading');
 
     try {
-      // 1. Configure ONNX Runtime Web for bulletproof browser compatibility
-      ort.env.wasm.numThreads = 1; // single-thread prevents SharedArrayBuffer / CORS header restrictions
+      ort.env.wasm.numThreads = 1;
       ort.env.wasm.simd = true;
 
       const yoloModelUrl = `${window.location.origin}/models/yolov8n.onnx`;
 
       try {
-        // Attempt loading local YOLOv8 ONNX model
         this.yoloSession = await ort.InferenceSession.create(yoloModelUrl, {
           executionProviders: ['webgl', 'wasm']
         });
@@ -107,11 +113,10 @@ export class VehicleDetector {
         this.isModelReady = true;
         this.isLoadingModel = false;
         this.updateStatusBadge('YOLOv8 AI Aktif (ONNX)', 'ready');
-        this.addLogEvent('Model YOLOv8 Nano berhasil dimuat via ONNX Runtime. Siap mendeteksi Mobil & Motor.');
+        this.addLogEvent('Model YOLOv8 Nano aktif via ONNX Runtime. Deteksi Mobil & Motor siap.');
       } catch (yoloErr) {
-        console.warn('YOLO ONNX gagal, beralih ke Fallback Engine Lokal:', yoloErr);
+        console.warn('YOLO ONNX fallback ke Engine Lokal:', yoloErr);
 
-        // Fallback: Local MobileNet model
         await tf.setBackend('cpu');
         await tf.ready();
         const fallbackUrl = `${window.location.origin}/models/ssdlite_mobilenet_v2/model.json`;
@@ -120,10 +125,9 @@ export class VehicleDetector {
         this.isModelReady = true;
         this.isLoadingModel = false;
         this.updateStatusBadge('AI Vision Aktif (Local Engine)', 'ready');
-        this.addLogEvent('Fallback engine aktif. Siap mendeteksi Mobil & Motor.');
+        this.addLogEvent('Fallback engine aktif.');
       }
 
-      // If video is already active, start detection immediately
       if (this.videoEl && !this.videoEl.paused) {
         this.startDetection();
       }
@@ -214,7 +218,7 @@ export class VehicleDetector {
       });
     }
 
-    // Playback Speed Buttons (0.5x, 1x, 1.5x, 2x)
+    // Playback Speed Buttons
     document.querySelectorAll('.ai-speed-btn').forEach(btn => {
       btn.addEventListener('click', () => {
         document.querySelectorAll('.ai-speed-btn').forEach(b => b.classList.remove('active'));
@@ -233,7 +237,7 @@ export class VehicleDetector {
       });
     });
 
-    // 5. Presets (Sensitif, Standar, Ketat)
+    // 5. Presets (Sensitif Motor: 18%, Standar: 25%, Ketat: 40%)
     document.querySelectorAll('.ai-preset-btn').forEach(btn => {
       btn.addEventListener('click', () => {
         document.querySelectorAll('.ai-preset-btn').forEach(b => b.classList.remove('active'));
@@ -275,6 +279,25 @@ export class VehicleDetector {
       aiToggleBtn.addEventListener('click', () => this.toggleAIInference());
     }
 
+    // Toggle Trails & Speed HUD
+    const trailsBtn = document.getElementById('btn-ai-toggle-trails');
+    if (trailsBtn) {
+      trailsBtn.addEventListener('click', () => {
+        this.showTrails = !this.showTrails;
+        trailsBtn.classList.toggle('active-toggle', this.showTrails);
+        this.addLogEvent(`Garis Jejak Gerak: ${this.showTrails ? 'AKTIF' : 'NONAKTIF'}`);
+      });
+    }
+
+    const speedBtn = document.getElementById('btn-ai-toggle-speed');
+    if (speedBtn) {
+      speedBtn.addEventListener('click', () => {
+        this.showSpeed = !this.showSpeed;
+        speedBtn.classList.toggle('active-toggle', this.showSpeed);
+        this.addLogEvent(`Estimasi Kecepatan Kendaraan: ${this.showSpeed ? 'AKTIF' : 'NONAKTIF'}`);
+      });
+    }
+
     // 9. Reset, Snapshot, CSV Export
     const resetBtn = document.getElementById('btn-ai-reset-counts');
     if (resetBtn) resetBtn.addEventListener('click', () => this.resetCounters());
@@ -290,14 +313,14 @@ export class VehicleDetector {
     const slider = document.getElementById('ai-conf-slider');
     const valText = document.getElementById('ai-conf-val');
 
-    let conf = 35;
-    if (preset === 'sensitive') conf = 22;
-    else if (preset === 'strict') conf = 52;
+    let conf = 20;
+    if (preset === 'sensitive') conf = 14;
+    else if (preset === 'strict') conf = 35;
 
     this.confidenceThreshold = conf / 100;
     if (slider) slider.value = conf;
     if (valText) valText.textContent = `${conf}%`;
-    this.addLogEvent(`Sensitivitas YOLO diubah ke: ${preset.toUpperCase()} (${conf}%)`);
+    this.addLogEvent(`Sensitivitas YOLO diatur ke: ${preset.toUpperCase()} (${conf}%)`);
   }
 
   toggleModal() {
@@ -409,7 +432,7 @@ export class VehicleDetector {
       this.startDetection();
       this.updatePlayBtnIcon(true);
       const durSec = Math.round(this.videoEl.duration || 0);
-      this.addLogEvent(`Video dimuat: ${file.name} (${durSec}s). Deteksi YOLO Mobil & Motor aktif.`);
+      this.addLogEvent(`Video dimuat: ${file.name} (${durSec}s). Deteksi YOLO berjalan.`);
     };
   }
 
@@ -584,7 +607,7 @@ export class VehicleDetector {
   }
 
   // =========================================================================
-  // DECOUPLED LOOPS: 60 FPS RENDER & NON-BLOCKING YOLO INFERENCE
+  // DECOUPLED LOOPS: 60 FPS RENDER & NON-BLOCKING INFERENCE
   // =========================================================================
   startDetection() {
     if (this.isRunning) return;
@@ -640,12 +663,13 @@ export class VehicleDetector {
     }
 
     if (this.isRunning) {
-      this.inferenceTimeout = setTimeout(() => this.runInferenceLoop(), 16);
+      // Small tick delay to allow browser thread to breathe
+      this.inferenceTimeout = setTimeout(() => this.runInferenceLoop(), 10);
     }
   }
 
   // =========================================================================
-  // YOLO INFERENCE PIPELINE (VEHICLE DETECTION: MOBIL & MOTOR)
+  // ADVANCED LETTERBOXED YOLOv8 INFERENCE WITH HIGH MOTORCYCLE SENSITIVITY
   // =========================================================================
   async detectFrame() {
     if (!this.videoEl || this.videoEl.readyState < 2) return;
@@ -653,69 +677,135 @@ export class VehicleDetector {
     const vidW = this.videoEl.videoWidth || 640;
     const vidH = this.videoEl.videoHeight || 360;
 
+    // Capture precise timestamps at the exact instant the frame is captured
+    const captureMeta = {
+      wallTime: performance.now(),
+      videoTime: (this.videoEl && !isNaN(this.videoEl.currentTime)) ? this.videoEl.currentTime : null
+    };
+
     let processedDetections = [];
 
+    // Calculate dynamic thresholds:
+    // Motorcycles are smaller and have lower confidence in CCTV -> highly sensitive threshold
+    const motoThreshold = Math.max(0.08, this.confidenceThreshold * 0.55);
+    const carThreshold = Math.max(0.18, this.confidenceThreshold * 0.90);
+
     if (this.engineType === 'yolo' && this.yoloSession) {
-      // 1. Draw into 640x640 canvas
-      this.yoloCtx.drawImage(this.videoEl, 0, 0, 640, 640);
+      // 1. Precise Letterboxing to 640x640 (maintains true aspect ratio without squishing!)
+      const scale = Math.min(640 / vidW, 640 / vidH);
+      const nw = Math.round(vidW * scale);
+      const nh = Math.round(vidH * scale);
+      const padX = (640 - nw) / 2;
+      const padY = (640 - nh) / 2;
+      this.letterbox = { scale, padX, padY };
+
+      this.yoloCtx.fillStyle = '#727272';
+      this.yoloCtx.fillRect(0, 0, 640, 640);
+      this.yoloCtx.drawImage(this.videoEl, padX, padY, nw, nh);
+
       const imgData = this.yoloCtx.getImageData(0, 0, 640, 640).data;
 
-      // 2. Pre-process to Float32 Tensor [1, 3, 640, 640]
-      const floatArr = new Float32Array(3 * 640 * 640);
+      // 2. Pre-process to pre-allocated Float32Array [1, 3, 640, 640]
+      const inv255 = 1.0 / 255.0;
       const numPixels = 640 * 640;
       for (let i = 0; i < numPixels; i++) {
-        floatArr[i] = imgData[i * 4] / 255.0;
-        floatArr[numPixels + i] = imgData[i * 4 + 1] / 255.0;
-        floatArr[2 * numPixels + i] = imgData[i * 4 + 2] / 255.0;
+        const i4 = i * 4;
+        this.floatArr[i] = imgData[i4] * inv255;
+        this.floatArr[numPixels + i] = imgData[i4 + 1] * inv255;
+        this.floatArr[2 * numPixels + i] = imgData[i4 + 2] * inv255;
       }
 
-      const inputTensor = new ort.Tensor('float32', floatArr, [1, 3, 640, 640]);
+      const inputTensor = new ort.Tensor('float32', this.floatArr, [1, 3, 640, 640]);
       const results = await this.yoloSession.run({ images: inputTensor });
       const outputData = results.output0.data;
 
-      // 3. Post-process: Extract Mobil and Sepeda Motor candidate boxes
+      // 3. Extract candidate boxes with intelligent Indonesian motorcycle & car detection
       const candidates = [];
       const numCandidates = 8400;
-      const scaleX = vidW / 640;
-      const scaleY = vidH / 640;
 
       for (let c = 0; c < numCandidates; c++) {
-        // COCO Classes: 2=car, 5=bus, 7=truck (Mobil) | 3=motorcycle, 1=bicycle (Sepeda Motor)
-        const carScore = Math.max(
-          outputData[6 * numCandidates + c],  // class 2: car
-          outputData[9 * numCandidates + c],  // class 5: bus
-          outputData[11 * numCandidates + c]  // class 7: truck
-        );
-        const motoScore = Math.max(
-          outputData[7 * numCandidates + c],  // class 3: motorcycle
-          outputData[5 * numCandidates + c]   // class 1: bicycle
-        );
+        // COCO Classes:
+        // class 0: person (row 4)
+        // class 1: bicycle (row 5)
+        // class 2: car (row 6)
+        // class 3: motorcycle (row 7)
+        // class 5: bus (row 9)
+        // class 7: truck (row 11)
+        const personScore = outputData[4 * numCandidates + c];
+        const bicycleScore = outputData[5 * numCandidates + c];
+        const carScore = outputData[6 * numCandidates + c];
+        const motoScore = outputData[7 * numCandidates + c];
+        const busScore = outputData[9 * numCandidates + c];
+        const truckScore = outputData[11 * numCandidates + c];
 
-        const maxScore = Math.max(carScore, motoScore);
-        if (maxScore >= this.confidenceThreshold) {
-          const cx = outputData[0 * numCandidates + c] * scaleX;
-          const cy = outputData[1 * numCandidates + c] * scaleY;
-          const w = outputData[2 * numCandidates + c] * scaleX;
-          const h = outputData[3 * numCandidates + c] * scaleY;
-          const cls = carScore >= motoScore ? 'car' : 'motorcycle';
+        // Combined 4+ wheeler score (Mobil)
+        const autoScore = Math.max(carScore, busScore, truckScore);
+
+        // Combined 2-wheeler score (Sepeda Motor)
+        const twoWheelerScore = Math.max(motoScore, bicycleScore);
+
+        // Rider fusion: in Indonesian traffic CCTV, cyclists/riders are detected as "person" on roadway
+        const riderFusion = (personScore >= 0.16 && (twoWheelerScore >= 0.05 || personScore >= 0.28));
+        const effectiveMotoScore = riderFusion 
+          ? Math.max(twoWheelerScore, personScore * 0.92) 
+          : twoWheelerScore;
+
+        const w_letter = outputData[2 * numCandidates + c];
+        const h_letter = outputData[3 * numCandidates + c];
+        const aspectRatio = w_letter / Math.max(1, h_letter); // width / height
+
+        let cls = null;
+        let score = 0;
+
+        // Disambiguation:
+        // Motorcycles in CCTV are narrow/tall (aspectRatio < 0.72)
+        // Cars in CCTV are squarish/wide (aspectRatio >= 0.72)
+        if (effectiveMotoScore >= motoThreshold && (effectiveMotoScore >= autoScore * 0.85 || aspectRatio < 0.72)) {
+          cls = 'motorcycle';
+          score = effectiveMotoScore;
+        } else if (autoScore >= carThreshold && (autoScore > effectiveMotoScore || aspectRatio >= 0.72)) {
+          cls = 'car';
+          score = autoScore;
+        } else if (effectiveMotoScore >= motoThreshold) {
+          cls = 'motorcycle';
+          score = effectiveMotoScore;
+        } else if (autoScore >= carThreshold) {
+          cls = 'car';
+          score = autoScore;
+        }
+
+        if (cls) {
+          const cx_letter = outputData[0 * numCandidates + c];
+          const cy_letter = outputData[1 * numCandidates + c];
+
+          // Un-letterbox back to original video dimensions!
+          const realX = Math.max(0, ((cx_letter - w_letter / 2) - padX) / scale);
+          const realY = Math.max(0, ((cy_letter - h_letter / 2) - padY) / scale);
+          const realW = Math.min(vidW - realX, w_letter / scale);
+          // If rider fusion, expand height downward so entire motorcycle frame and wheels are covered
+          const heightMultiplier = (cls === 'motorcycle' && riderFusion) ? 1.35 : 1.0;
+          const realH = Math.min(vidH - realY, (h_letter * heightMultiplier) / scale);
 
           candidates.push({
-            bbox: [cx - w / 2, cy - h / 2, w, h],
-            score: maxScore,
+            bbox: [realX, realY, realW, realH],
+            score: score,
             class: cls
           });
         }
       }
 
-      // 4. Non-Maximum Suppression (NMS)
+      // 4. Non-Maximum Suppression (NMS) with Cross-Class Duplicate Elimination
       processedDetections = this.applyNMS(candidates, 0.45);
     } else if (this.fallbackModel) {
       // Fallback engine
-      const predictions = await this.fallbackModel.detect(this.videoEl, 25, this.confidenceThreshold);
+      const predictions = await this.fallbackModel.detect(this.videoEl, 25, motoThreshold);
       for (const p of predictions) {
         let mappedClass = null;
-        if (p.class === 'car' || p.class === 'truck' || p.class === 'bus') mappedClass = 'car';
-        else if (p.class === 'motorcycle' || p.class === 'bicycle') mappedClass = 'motorcycle';
+        if ((p.class === 'car' || p.class === 'truck' || p.class === 'bus') && p.score >= carThreshold) {
+          mappedClass = 'car';
+        } else if ((p.class === 'motorcycle' || p.class === 'bicycle' || p.class === 'person') && p.score >= motoThreshold) {
+          mappedClass = 'motorcycle';
+        }
 
         if (mappedClass) {
           processedDetections.push({
@@ -729,8 +819,8 @@ export class VehicleDetector {
 
     this.activeDetections = processedDetections;
 
-    // 5. Multi-Object Tracking & Virtual Line Counting
-    this.processTrackingAndCounting(processedDetections, vidW, vidH);
+    // 5. Track with Zero-Delay Velocity Prediction and Virtual Line Counting
+    this.processTrackingAndCounting(processedDetections, vidW, vidH, captureMeta);
   }
 
   applyNMS(boxes, iouThreshold = 0.45) {
@@ -740,7 +830,14 @@ export class VehicleDetector {
     for (const b of boxes) {
       let overlap = false;
       for (const s of selected) {
-        if (s.class === b.class && this.computeIoU(s.bbox, b.bbox) > iouThreshold) {
+        const iou = this.computeIoU(s.bbox, b.bbox);
+        // Suppress same class
+        if (s.class === b.class && iou > iouThreshold) {
+          overlap = true;
+          break;
+        }
+        // Suppress overlapping cross-class duplicate bounding boxes (same vehicle detected twice)
+        if (s.class !== b.class && iou > 0.52) {
           overlap = true;
           break;
         }
@@ -762,9 +859,20 @@ export class VehicleDetector {
     return union <= 0 ? 0 : inter / union;
   }
 
-  processTrackingAndCounting(predictions, w, h) {
+  // =========================================================================
+  // ZERO-LAG VELOCITY PREDICTION & SMOOTH FORWARD TRACKING
+  // =========================================================================
+  processTrackingAndCounting(predictions, w, h, captureMeta) {
     const lineY = h * this.countingLineY;
     const now = performance.now();
+    const captureVideoTime = captureMeta ? captureMeta.videoTime : null;
+    const captureWallTime = captureMeta ? captureMeta.wallTime : now;
+
+    // Dynamic matching distance scaled with video resolution
+    const diag = Math.hypot(w, h);
+    const baseMatchDist = Math.max(160, diag * 0.14);
+
+    const matchedTrackIds = new Set();
 
     for (const pred of predictions) {
       const [bx, by, bw, bh] = pred.bbox;
@@ -772,27 +880,80 @@ export class VehicleDetector {
       const cy = by + bh / 2;
 
       let bestMatchId = null;
-      let minDist = 95;
+      let bestScore = Infinity;
 
       for (const [id, track] of this.trackedVehicles.entries()) {
-        const dist = Math.hypot(track.cx - cx, track.cy - cy);
-        if (dist < minDist && track.class === pred.class) {
-          minDist = dist;
-          bestMatchId = id;
+        if (matchedTrackIds.has(id)) continue;
+        if (track.class !== pred.class) continue;
+
+        // Predict where this track should be at the captured frame time:
+        let dt = 0;
+        if (captureVideoTime != null && track.lastVideoTime != null) {
+          dt = Math.max(0, captureVideoTime - track.lastVideoTime);
+          if (dt > 1.2 || dt < -0.1) dt = 0;
+        } else if (track.lastWallTime != null) {
+          dt = Math.max(0, (captureWallTime - track.lastWallTime) / 1000);
+          if (dt > 1.2) dt = 0;
+        }
+
+        const predCx = track.cx + (track.vx || 0) * dt;
+        const predCy = track.cy + (track.vy || 0) * dt;
+
+        const dist = Math.hypot(predCx - cx, predCy - cy);
+        const iou = this.computeIoU(pred.bbox, [predCx - track.w / 2, predCy - track.h / 2, track.w, track.h]);
+
+        const matchThreshold = Math.max(baseMatchDist, Math.max(bw, bh) * 1.5);
+        if (iou > 0.15 || dist < matchThreshold) {
+          const score = dist - iou * 120;
+          if (score < bestScore) {
+            bestScore = score;
+            bestMatchId = id;
+          }
         }
       }
 
-      if (bestMatchId) {
+      if (bestMatchId != null) {
+        matchedTrackIds.add(bestMatchId);
         const track = this.trackedVehicles.get(bestMatchId);
+
+        let dt = 0;
+        if (captureVideoTime != null && track.lastVideoTime != null) {
+          dt = Math.max(0.016, captureVideoTime - track.lastVideoTime);
+          if (dt > 1.2) dt = 0.033;
+        } else if (track.lastWallTime != null) {
+          dt = Math.max(0.016, (captureWallTime - track.lastWallTime) / 1000);
+          if (dt > 1.2) dt = 0.033;
+        } else {
+          dt = 0.033;
+        }
+
         const prevY = track.cy;
+        const instVx = (cx - track.cx) / dt;
+        const instVy = (cy - track.cy) / dt;
+
+        // Smooth velocity exponential filter (responsiveness 70%, history 30%)
+        track.vx = (track.vx != null && (track.vx !== 0 || track.vy !== 0))
+          ? track.vx * 0.30 + instVx * 0.70
+          : instVx;
+        track.vy = (track.vy != null && (track.vx !== 0 || track.vy !== 0))
+          ? track.vy * 0.30 + instVy * 0.70
+          : instVy;
+
+        // Record breadcrumb trail for smooth movement rendering
+        if (!track.trail) track.trail = [];
+        track.trail.push({ x: cx, y: cy, t: now });
+        if (track.trail.length > 25) track.trail.shift();
 
         track.cx = cx;
         track.cy = cy;
-        track.bbox = pred.bbox;
+        track.w = bw;
+        track.h = bh;
         track.score = pred.score;
+        track.lastVideoTime = captureVideoTime;
+        track.lastWallTime = captureWallTime;
         track.lastSeen = now;
 
-        // Check if vehicle crossed the virtual line
+        // Virtual line crossing check during inference update
         if (!track.counted && this.countingLineActive) {
           const crossedDown = prevY < lineY && cy >= lineY;
           const crossedUp = prevY > lineY && cy <= lineY;
@@ -808,19 +969,25 @@ export class VehicleDetector {
           id: newId,
           cx,
           cy,
-          bbox: pred.bbox,
+          w: bw,
+          h: bh,
+          vx: 0,
+          vy: 0,
           class: pred.class,
           score: pred.score,
           firstSeen: now,
           lastSeen: now,
+          lastVideoTime: captureVideoTime,
+          lastWallTime: captureWallTime,
+          trail: [{ x: cx, y: cy, t: now }],
           counted: false
         });
       }
     }
 
-    // Clean up stale tracks (older than 1.2s)
+    // Clean up stale tracks (older than 1.4s)
     for (const [id, track] of this.trackedVehicles.entries()) {
-      if (now - track.lastSeen > 1200) {
+      if (now - track.lastSeen > 1400) {
         this.trackedVehicles.delete(id);
       }
     }
@@ -871,7 +1038,7 @@ export class VehicleDetector {
   }
 
   // =========================================================================
-  // 60 FPS RENDER LOOP: VIRTUAL LINE & CLEAN VEHICLE BOXES
+  // 60 FPS RENDER LOOP: FORWARD-EXTRAPOLATED REAL-TIME BOUNDING BOXES
   // =========================================================================
   renderCanvasFrame() {
     if (!this.videoEl || !this.overlayCanvas || !this.ctx) return;
@@ -890,7 +1057,7 @@ export class VehicleDetector {
     // 1. Render Virtual Counting Line
     this.renderCountingLine(vidW, vidH);
 
-    // 2. Render Vehicle Bounding Boxes (YOLO Style)
+    // 2. Render Real-Time Forward Extrapolated Vehicle Boxes (Eliminates Delay!)
     this.renderVehicleBoxes(ctx, vidW, vidH);
 
     // 3. Update Telemetry HUD
@@ -935,13 +1102,64 @@ export class VehicleDetector {
   }
 
   renderVehicleBoxes(ctx, w, h) {
+    const now = performance.now();
+    const lineY = h * this.countingLineY;
+    const isPlaying = this.videoEl && !this.videoEl.paused;
+
     for (const [id, track] of this.trackedVehicles.entries()) {
-      if (!track.bbox) continue;
-      const [x, y, width, height] = track.bbox;
       const cfg = this.classConfig[track.class] || { label: track.class, color: '#38bdf8' };
       const color = cfg.color;
 
+      // Real-Time Video-Synchronized Forward Extrapolation (ELIMINATES ALL DELAY!)
+      // Synchronizes the bounding box frame-by-frame with the exact video playback currentTime!
+      let dt = 0;
+      if (isPlaying) {
+        if (this.currentSource === 'file' && this.videoEl && track.lastVideoTime != null) {
+          dt = Math.max(0, this.videoEl.currentTime - track.lastVideoTime);
+          if (dt > 1.2 || dt < -0.1) dt = 0;
+        } else if (track.lastWallTime != null) {
+          dt = Math.max(0, (now - track.lastWallTime) / 1000);
+          if (dt > 1.2) dt = 0;
+        }
+      }
+
+      const renderCx = track.cx + (track.vx || 0) * dt;
+      const renderCy = track.cy + (track.vy || 0) * dt;
+
+      const renderX = renderCx - track.w / 2;
+      const renderY = renderCy - track.h / 2;
+
+      // Real-time 60 FPS ray-cast virtual line crossing trigger
+      if (!track.counted && this.countingLineActive && isPlaying) {
+        const prevY = track.cy;
+        const crossedDown = prevY < lineY && renderCy >= lineY;
+        const crossedUp = prevY > lineY && renderCy <= lineY;
+        if (crossedDown || crossedUp) {
+          track.counted = true;
+          this.recordCountEvent(track.class, track.score);
+        }
+      }
+
       ctx.save();
+
+      // Render Motion Trail if enabled
+      if (this.showTrails && track.trail && track.trail.length > 1) {
+        ctx.save();
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 2.2;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        ctx.globalAlpha = 0.55;
+        ctx.beginPath();
+        for (let i = 0; i < track.trail.length; i++) {
+          const pt = track.trail[i];
+          if (i === 0) ctx.moveTo(pt.x, pt.y);
+          else ctx.lineTo(pt.x, pt.y);
+        }
+        ctx.lineTo(renderCx, renderCy);
+        ctx.stroke();
+        ctx.restore();
+      }
 
       // Glowing YOLO Bounding Box
       ctx.shadowColor = color;
@@ -949,48 +1167,54 @@ export class VehicleDetector {
       ctx.strokeStyle = color;
       ctx.lineWidth = 2.5;
       ctx.beginPath();
-      ctx.roundRect(x, y, width, height, 5);
+      ctx.roundRect(renderX, renderY, track.w, track.h, 5);
       ctx.stroke();
 
       // Corner Brackets
-      const bLen = Math.min(18, width * 0.25, height * 0.25);
+      const bLen = Math.min(18, track.w * 0.25, track.h * 0.25);
       ctx.lineWidth = 3.5;
       ctx.shadowBlur = 14;
 
       ctx.beginPath();
-      ctx.moveTo(x, y + bLen); ctx.lineTo(x, y); ctx.lineTo(x + bLen, y);
+      ctx.moveTo(renderX, renderY + bLen); ctx.lineTo(renderX, renderY); ctx.lineTo(renderX + bLen, renderY);
       ctx.stroke();
 
       ctx.beginPath();
-      ctx.moveTo(x + width - bLen, y); ctx.lineTo(x + width, y); ctx.lineTo(x + width, y + bLen);
+      ctx.moveTo(renderX + track.w - bLen, renderY); ctx.lineTo(renderX + track.w, renderY); ctx.lineTo(renderX + track.w, renderY + bLen);
       ctx.stroke();
 
       ctx.beginPath();
-      ctx.moveTo(x, y + height - bLen); ctx.lineTo(x, y + height); ctx.lineTo(x + bLen, y + height);
+      ctx.moveTo(renderX, renderY + track.h - bLen); ctx.lineTo(renderX, renderY + track.h); ctx.lineTo(renderX + bLen, renderY + track.h);
       ctx.stroke();
 
       ctx.beginPath();
-      ctx.moveTo(x + width - bLen, y + height); ctx.lineTo(x + width, y + height); ctx.lineTo(x + width, y + height - bLen);
+      ctx.moveTo(renderX + track.w - bLen, renderY + track.h); ctx.lineTo(renderX + track.w, renderY + track.h); ctx.lineTo(renderX + track.w, renderY + track.h - bLen);
       ctx.stroke();
 
       // Centroid
-      const cx = x + width / 2;
-      const cy = y + height / 2;
       ctx.fillStyle = color;
       ctx.beginPath();
-      ctx.arc(cx, cy, 3.5, 0, Math.PI * 2);
+      ctx.arc(renderCx, renderCy, 3.5, 0, Math.PI * 2);
       ctx.fill();
 
-      // Label Tag: Mobil or Sepeda Motor + Confidence %
+      // Label Tag: Mobil or Sepeda Motor + Confidence % + Speed (km/h)
       const scorePct = `${Math.round(track.score * 100)}%`;
-      const labelText = `${cfg.label} ${scorePct}`;
+      let speedText = '';
+      if (this.showSpeed && (track.vx || track.vy)) {
+        const pxPerSec = Math.hypot(track.vx || 0, track.vy || 0);
+        const estKmh = Math.round((pxPerSec / 16) * 3.6);
+        if (estKmh >= 5 && estKmh <= 120) {
+          speedText = ` • ${estKmh} km/j`;
+        }
+      }
+      const labelText = `${cfg.label} ${scorePct}${speedText}`;
 
       ctx.font = '600 12px "Outfit", sans-serif';
       const textWidth = ctx.measureText(labelText).width;
       const tagW = textWidth + 16;
       const tagH = 22;
-      const tagX = Math.max(0, x);
-      const tagY = y > 26 ? y - tagH - 4 : y + height + 4;
+      const tagX = Math.max(0, renderX);
+      const tagY = renderY > 26 ? renderY - tagH - 4 : renderY + track.h + 4;
 
       ctx.fillStyle = color;
       ctx.shadowBlur = 8;

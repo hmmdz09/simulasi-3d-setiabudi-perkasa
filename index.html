@@ -667,18 +667,18 @@
               <label class="ai-section-title"><i class="fa-solid fa-sliders"></i> Pengaturan Detektor:</label>
               <!-- Presets -->
               <div class="ai-presets-row">
-                <button class="ai-preset-btn" data-preset="sensitive" title="Sensitif tinggi untuk menangkap sepeda motor & pejalan kaki kecil">Sensitif (Motor)</button>
-                <button class="ai-preset-btn active" data-preset="standard" title="Keseimbangan optimal antara akurasi dan stabilitas">Standar</button>
-                <button class="ai-preset-btn" data-preset="strict" title="Hanya deteksi dengan kepastian tinggi">Ketat</button>
+                <button class="ai-preset-btn" data-preset="sensitive" title="Sensitif tinggi untuk menangkap sepeda motor kecil dan pengendara di jalan">Sensitif (Motor: 14%)</button>
+                <button class="ai-preset-btn active" data-preset="standard" title="Keseimbangan optimal untuk Mobil & Motor di CCTV">Standar (20%)</button>
+                <button class="ai-preset-btn" data-preset="strict" title="Hanya deteksi dengan kepastian tinggi">Ketat (35%)</button>
               </div>
             </div>
 
             <div class="ai-slider-row">
               <div class="slider-meta">
-                <span>Ambang Batas Kepercayaan (Confidence):</span>
-                <strong id="ai-conf-val">35%</strong>
+                <span>Kepekaan Deteksi (Confidence):</span>
+                <strong id="ai-conf-val">20%</strong>
               </div>
-              <input type="range" id="ai-conf-slider" min="15" max="85" value="35" class="ai-range-input">
+              <input type="range" id="ai-conf-slider" min="5" max="60" value="20" class="ai-range-input">
             </div>
 
             <div class="ai-slider-row">
