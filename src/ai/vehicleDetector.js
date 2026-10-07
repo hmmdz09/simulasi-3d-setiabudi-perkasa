@@ -1,4 +1,4 @@
-import * as ort from 'onnxruntime-web';
+import * as ort from 'onnxruntime-web/webgpu';
 import * as tf from '@tensorflow/tfjs';
 import * as cocoSsd from '@tensorflow-models/coco-ssd';
 
@@ -148,13 +148,15 @@ export class VehicleDetector {
 
       try {
         this.yoloSession = await ort.InferenceSession.create(yolo26ModelUrl, {
-          executionProviders: ['webgl', 'wasm']
+          executionProviders: ['webgpu', 'webgl', 'wasm'],
+          graphOptimizationLevel: 'all'
         });
         this.modelVersion = 'YOLOv26';
       } catch (err26Main) {
         console.warn('YOLOv26 main-thread failed, fallback to YOLOv8:', err26Main);
         this.yoloSession = await ort.InferenceSession.create(yolo8ModelUrl, {
-          executionProviders: ['webgl', 'wasm']
+          executionProviders: ['webgpu', 'webgl', 'wasm'],
+          graphOptimizationLevel: 'all'
         });
         this.modelVersion = 'YOLOv8';
       }
@@ -277,9 +279,16 @@ export class VehicleDetector {
   scheduleNextWorkerFrame(delay = 0) {
     if (!this.isRunning || this.engineType !== 'yolo_worker') return;
     if (this.workerFrameTimeout) clearTimeout(this.workerFrameTimeout);
-    this.workerFrameTimeout = setTimeout(() => {
-      this.dispatchNextWorkerFrame();
-    }, delay);
+
+    if (delay === 0 && this.videoEl && typeof this.videoEl.requestVideoFrameCallback === 'function' && !this.videoEl.paused) {
+      this.videoEl.requestVideoFrameCallback(() => {
+        this.dispatchNextWorkerFrame();
+      });
+    } else {
+      this.workerFrameTimeout = setTimeout(() => {
+        this.dispatchNextWorkerFrame();
+      }, delay);
+    }
   }
 
   handleWorkerDetections(data) {
@@ -1143,49 +1152,61 @@ export class VehicleDetector {
         }
       }
 
+      const playbackRate = (this.videoEl && this.videoEl.playbackRate) ? this.videoEl.playbackRate : 1.0;
+      const latencySec = Math.max(0, (now - captureWallTime) / 1000) * playbackRate;
+
       if (bestMatchId != null) {
         matchedTrackIds.add(bestMatchId);
         const track = this.trackedVehicles.get(bestMatchId);
 
         track.seenCount = (track.seenCount || 1) + 1;
 
-        let dt = 0;
-        if (captureVideoTime != null && track.lastVideoTime != null) {
-          dt = Math.max(0.016, captureVideoTime - track.lastVideoTime);
-          if (dt > 1.2) dt = 0.033;
-        } else if (track.lastWallTime != null) {
-          dt = Math.max(0.016, (captureWallTime - track.lastWallTime) / 1000);
-          if (dt > 1.2) dt = 0.033;
-        } else {
-          dt = 0.033;
-        }
+        // Accurate velocity measured between raw captured camera frames
+        const prevRawX = track.lastRawX ?? track.initX ?? cx;
+        const prevRawY = track.lastRawY ?? track.initY ?? cy;
+        const prevCapTime = track.lastCaptureWallTime ?? (captureWallTime - 0.05);
 
-        const instVx = (cx - track.cx) / dt;
-        const instVy = (cy - track.cy) / dt;
+        const dtFrames = Math.max(0.016, (captureWallTime - prevCapTime) / 1000) * playbackRate;
+        const rawVx = (cx - prevRawX) / dtFrames;
+        const rawVy = (cy - prevRawY) / dtFrames;
 
-        // Smooth velocity exponential filter (responsiveness 70%, history 30%)
+        // Clamp realistic vehicle pixel velocities
+        const clampedVx = Math.max(-1200, Math.min(1200, rawVx));
+        const clampedVy = Math.max(-1200, Math.min(1200, rawVy));
+
+        // Exponential smoothing (75% new observation, 25% history)
         track.vx = (track.vx != null && (track.vx !== 0 || track.vy !== 0))
-          ? track.vx * 0.30 + instVx * 0.70
-          : instVx;
+          ? track.vx * 0.25 + clampedVx * 0.75
+          : clampedVx;
         track.vy = (track.vy != null && (track.vx !== 0 || track.vy !== 0))
-          ? track.vy * 0.30 + instVy * 0.70
-          : instVy;
+          ? track.vy * 0.25 + clampedVy * 0.75
+          : clampedVy;
 
-        track.cx = cx;
-        track.cy = cy;
+        // True Kinematic Latency Compensation:
+        // Position of vehicle RIGHT NOW on screen is raw detected position + velocity * latency!
+        const compensatedCx = cx + track.vx * latencySec;
+        const compensatedCy = cy + track.vy * latencySec;
+
+        track.lastRawX = cx;
+        track.lastRawY = cy;
+        track.lastCaptureWallTime = captureWallTime;
+
+        track.cx = compensatedCx;
+        track.cy = compensatedCy;
+        track.smoothCx = compensatedCx;
+        track.smoothCy = compensatedCy;
+
         track.w = bw;
         track.h = bh;
         track.score = pred.score;
         track.lastVideoTime = captureVideoTime;
-        track.lastWallTime = captureWallTime;
+        track.lastWallTime = now;
         track.lastSeen = now;
 
         // AUTOMATIC HIGH-RESPONSIVENESS COUNTING:
-        // A vehicle is counted as soon as confirmed (seen >= 2 detections OR moved >= 10px OR score >= 0.28)!
-        // Every motorcycle and car is 100% counted without needing to cross a line!
         if (!track.counted) {
           const moveDist = Math.hypot(cx - (track.initX ?? cx), cy - (track.initY ?? cy));
-          if (track.seenCount >= 2 || moveDist >= 10 || track.score >= 0.28) {
+          if (track.seenCount >= 2 || moveDist >= 10 || track.score >= 0.25) {
             track.counted = true;
             this.recordCountEvent(track.class, track.score);
           }
@@ -1200,6 +1221,9 @@ export class VehicleDetector {
           smoothCy: cy,
           initX: cx,
           initY: cy,
+          lastRawX: cx,
+          lastRawY: cy,
+          lastCaptureWallTime: captureWallTime,
           seenCount: 1,
           w: bw,
           h: bh,
@@ -1210,10 +1234,10 @@ export class VehicleDetector {
           firstSeen: now,
           lastSeen: now,
           lastVideoTime: captureVideoTime,
-          lastWallTime: captureWallTime,
+          lastWallTime: now,
           counted: false
         };
-        if (pred.score >= 0.28) {
+        if (pred.score >= 0.25) {
           newTrack.counted = true;
           this.recordCountEvent(pred.class, pred.score);
         }
@@ -1316,13 +1340,13 @@ export class VehicleDetector {
       const targetCx = track.cx + (track.vx || 0) * dt;
       const targetCy = track.cy + (track.vy || 0) * dt;
 
-      // Smooth Position Filter to eliminate bounding box jitter
+      // Smooth Position Filter to eliminate bounding box jitter (0.85 for ultra-responsive zero-lag tracking)
       if (track.smoothCx === undefined) {
         track.smoothCx = targetCx;
         track.smoothCy = targetCy;
       } else {
-        track.smoothCx += (targetCx - track.smoothCx) * 0.50;
-        track.smoothCy += (targetCy - track.smoothCy) * 0.50;
+        track.smoothCx += (targetCx - track.smoothCx) * 0.85;
+        track.smoothCy += (targetCy - track.smoothCy) * 0.85;
       }
 
       const renderX = track.smoothCx - track.w / 2;

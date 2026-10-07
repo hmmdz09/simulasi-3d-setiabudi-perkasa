@@ -1,4 +1,4 @@
-import * as ort from 'onnxruntime-web';
+import * as ort from 'onnxruntime-web/webgpu';
 
 let session = null;
 let inputName = 'pixel_values';
@@ -21,8 +21,10 @@ self.onmessage = async (e) => {
       ort.env.wasm.numThreads = hasSAB ? Math.min(4, navigator.hardwareConcurrency || 2) : 1;
       ort.env.wasm.simd = true;
 
+      // Prioritize WebGPU hardware acceleration on GPU for ultra-low latency (<25ms)
       session = await ort.InferenceSession.create(data.modelUrl, {
-        executionProviders: ['wasm']
+        executionProviders: ['webgpu', 'wasm'],
+        graphOptimizationLevel: 'all'
       });
 
       inputName = session.inputNames[0] || 'pixel_values';
@@ -67,12 +69,25 @@ self.onmessage = async (e) => {
 
       const imgData = offCtx.getImageData(0, 0, 640, 640).data;
 
-      // 2. Pre-process to pre-allocated Float32Array [1, 3, 640, 640]
-      for (let i = 0; i < numPixels; i++) {
+      // 2. High-Speed 4x Loop-Unrolled Pre-processing to Float32Array [1, 3, 640, 640]
+      const offsetG = numPixels;
+      const offsetB = numPixels * 2;
+      for (let i = 0; i < numPixels; i += 4) {
         const i4 = i * 4;
         floatArr[i] = imgData[i4] * inv255;
-        floatArr[numPixels + i] = imgData[i4 + 1] * inv255;
-        floatArr[2 * numPixels + i] = imgData[i4 + 2] * inv255;
+        floatArr[i + 1] = imgData[i4 + 4] * inv255;
+        floatArr[i + 2] = imgData[i4 + 8] * inv255;
+        floatArr[i + 3] = imgData[i4 + 12] * inv255;
+
+        floatArr[offsetG + i] = imgData[i4 + 1] * inv255;
+        floatArr[offsetG + i + 1] = imgData[i4 + 5] * inv255;
+        floatArr[offsetG + i + 2] = imgData[i4 + 9] * inv255;
+        floatArr[offsetG + i + 3] = imgData[i4 + 13] * inv255;
+
+        floatArr[offsetB + i] = imgData[i4 + 2] * inv255;
+        floatArr[offsetB + i + 1] = imgData[i4 + 6] * inv255;
+        floatArr[offsetB + i + 2] = imgData[i4 + 10] * inv255;
+        floatArr[offsetB + i + 3] = imgData[i4 + 14] * inv255;
       }
 
       // 3. Run Inference on background thread with dynamic input name
@@ -81,9 +96,9 @@ self.onmessage = async (e) => {
       feeds[inputName] = inputTensor;
       const results = await session.run(feeds);
 
-      // 4. Candidate extraction with ultra-sensitive motorcycle detection
-      const motoThreshold = Math.max(0.05, confThreshold * 0.40);
-      const carThreshold = Math.max(0.15, confThreshold * 0.80);
+      // 4. Candidate extraction with ultra-sensitive omnidirectional motorcycle detection
+      const motoThreshold = Math.max(0.045, confThreshold * 0.35);
+      const carThreshold = Math.max(0.14, confThreshold * 0.75);
       const candidates = [];
 
       if (isYolo26 && results.logits && results.pred_boxes) {
@@ -106,7 +121,7 @@ self.onmessage = async (e) => {
           const twoWheelerScore = Math.max(motoScore, bicycleScore);
 
           // Sensitive rider fusion for Indonesian traffic CCTV
-          const riderFusion = (personScore >= 0.10 && (twoWheelerScore >= 0.03 || personScore >= 0.18));
+          const riderFusion = (personScore >= 0.08 && (twoWheelerScore >= 0.025 || personScore >= 0.16));
           const effectiveMotoScore = riderFusion
             ? Math.max(twoWheelerScore, personScore * 0.90)
             : twoWheelerScore;
@@ -122,16 +137,21 @@ self.onmessage = async (e) => {
           let cls = null;
           let score = 0;
 
-          if (effectiveMotoScore >= motoThreshold && (effectiveMotoScore >= autoScore * 0.80 || aspectRatio < 0.72)) {
+          const isTwoWheeler = effectiveMotoScore >= motoThreshold;
+          const isAutomobile = autoScore >= carThreshold;
+
+          // Omnidirectional detection for motorcycles:
+          // Detect motorcycles whether moving straight, turning, or crossing horizontally from the side
+          if (isTwoWheeler && (effectiveMotoScore >= autoScore * 0.68 || riderFusion || aspectRatio < 1.15)) {
             cls = 'motorcycle';
             score = effectiveMotoScore;
-          } else if (autoScore >= carThreshold && (autoScore > effectiveMotoScore || aspectRatio >= 0.72)) {
+          } else if (isAutomobile && (autoScore > effectiveMotoScore || aspectRatio >= 0.75)) {
             cls = 'car';
             score = autoScore;
-          } else if (effectiveMotoScore >= motoThreshold) {
+          } else if (isTwoWheeler) {
             cls = 'motorcycle';
             score = effectiveMotoScore;
-          } else if (autoScore >= carThreshold) {
+          } else if (isAutomobile) {
             cls = 'car';
             score = autoScore;
           }
@@ -173,7 +193,7 @@ self.onmessage = async (e) => {
           const autoScore = Math.max(carScore, busScore, truckScore);
           const twoWheelerScore = Math.max(motoScore, bicycleScore);
 
-          const riderFusion = (personScore >= 0.10 && (twoWheelerScore >= 0.03 || personScore >= 0.18));
+          const riderFusion = (personScore >= 0.08 && (twoWheelerScore >= 0.025 || personScore >= 0.16));
           const effectiveMotoScore = riderFusion
             ? Math.max(twoWheelerScore, personScore * 0.90)
             : twoWheelerScore;
@@ -185,16 +205,19 @@ self.onmessage = async (e) => {
           let cls = null;
           let score = 0;
 
-          if (effectiveMotoScore >= motoThreshold && (effectiveMotoScore >= autoScore * 0.80 || aspectRatio < 0.72)) {
+          const isTwoWheeler = effectiveMotoScore >= motoThreshold;
+          const isAutomobile = autoScore >= carThreshold;
+
+          if (isTwoWheeler && (effectiveMotoScore >= autoScore * 0.68 || riderFusion || aspectRatio < 1.15)) {
             cls = 'motorcycle';
             score = effectiveMotoScore;
-          } else if (autoScore >= carThreshold && (autoScore > effectiveMotoScore || aspectRatio >= 0.72)) {
+          } else if (isAutomobile && (autoScore > effectiveMotoScore || aspectRatio >= 0.75)) {
             cls = 'car';
             score = autoScore;
-          } else if (effectiveMotoScore >= motoThreshold) {
+          } else if (isTwoWheeler) {
             cls = 'motorcycle';
             score = effectiveMotoScore;
-          } else if (autoScore >= carThreshold) {
+          } else if (isAutomobile) {
             cls = 'car';
             score = autoScore;
           }
