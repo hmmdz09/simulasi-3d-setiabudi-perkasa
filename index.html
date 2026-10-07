@@ -597,6 +597,22 @@
         <!-- Right Column: Settings, Counter Cards & Event Stream -->
         <div class="ai-sidebar-card">
           
+          <!-- 0. AI Model Selector (YOLOv26 vs YOLOv8 Nano) -->
+          <div class="ai-section">
+            <div class="ai-section-header-flex">
+              <label class="ai-section-title"><i class="fa-solid fa-microchip"></i> Arsitektur Model AI:</label>
+              <span class="ai-badge-total" id="ai-active-model-tag">Worker 60 FPS</span>
+            </div>
+            <div class="ai-model-tabs" role="tablist">
+              <button class="ai-model-btn active" data-model="yolov26" id="btn-model-yolo26" title="Ultralytics YOLOv26 Nano End-to-End (NMS-Free Transformer)">
+                <i class="fa-solid fa-bolt"></i> YOLOv26 (NMS-Free)
+              </button>
+              <button class="ai-model-btn" data-model="yolov8" id="btn-model-yolo8" title="Ultralytics YOLOv8 Nano - Sangat Responsif & Akurat untuk Motor & Mobil CCTV Sudut Jauh">
+                <i class="fa-solid fa-bullseye"></i> YOLOv8 (Rekomendasi CCTV)
+              </button>
+            </div>
+          </div>
+
           <!-- 1. Source Switcher -->
           <div class="ai-section">
             <label class="ai-section-title"><i class="fa-solid fa-video"></i> Sumber Input Video:</label>

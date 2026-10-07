@@ -2,6 +2,9 @@ import * as ort from 'onnxruntime-web/webgpu';
 import * as tf from '@tensorflow/tfjs';
 import * as cocoSsd from '@tensorflow-models/coco-ssd';
 
+// Explicitly configure jsDelivr CDN paths for all ONNX WASM binaries to eliminate 404s on Vercel
+ort.env.wasm.wasmPaths = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.30.0/dist/';
+
 export class VehicleDetector {
   constructor(app) {
     this.app = app;
@@ -49,6 +52,7 @@ export class VehicleDetector {
     this.isWorkerBusy = false;
     this.workerFrameTimeout = null;
     this.forceFrameInference = false;
+    this.workerErrorCount = 0;
 
     // Sliding Window FPS Metering (smooth 60 FPS readout without jitter)
     this.fpsFrameCount = 0;
@@ -104,12 +108,15 @@ export class VehicleDetector {
   async loadModel() {
     if (this.isModelReady || this.isLoadingModel) return;
     this.isLoadingModel = true;
-    this.updateStatusBadge('Memuat Model YOLOv26 AI...', 'loading');
+    this.updateStatusBadge('Memuat Model AI (YOLOv26)...', 'loading');
 
     const yolo26ModelUrl = `${window.location.origin}/models/yolov26n.onnx`;
     const yolo8ModelUrl = `${window.location.origin}/models/yolov8n.onnx`;
 
-    // 1. Preferred High-Performance: Dedicated Web Worker with YOLOv26 (60 FPS unblocked!)
+    // Ensure wasm paths are explicitly set before creating any session
+    ort.env.wasm.wasmPaths = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.30.0/dist/';
+
+    // 1. Preferred High-Performance: Dedicated Web Worker with YOLO (60 FPS unblocked!)
     try {
       if (typeof Worker !== 'undefined') {
         let workerReady = false;
@@ -130,7 +137,8 @@ export class VehicleDetector {
           this.isLoadingModel = false;
           const label = this.modelVersion || 'YOLOv26';
           this.updateStatusBadge(`${label} AI Aktif (60 FPS Worker)`, 'ready');
-          this.addLogEvent(`Model Ultralytics ${label} Nano (NMS-Free End-to-End) aktif via Web Worker (60 FPS).`);
+          this.updateModelTabsUI(label);
+          this.addLogEvent(`Model Ultralytics ${label} Nano aktif via Web Worker (60 FPS).`);
           if (this.videoEl && !this.videoEl.paused) {
             this.startDetection();
           }
@@ -212,16 +220,32 @@ export class VehicleDetector {
           if (data.type === 'INIT_SUCCESS') {
             clearTimeout(timer);
             this.modelVersion = data.modelName || 'YOLOv26';
+            this.workerErrorCount = 0;
+            this.updateModelTabsUI(this.modelVersion);
+            this.updateStatusBadge(`${this.modelVersion} AI Aktif (60 FPS Worker)`, 'ready');
             resolve(true);
           } else if (data.type === 'INIT_ERROR') {
             clearTimeout(timer);
             reject(new Error(data.error));
           } else if (data.type === 'DETECTIONS') {
+            this.workerErrorCount = 0;
             this.handleWorkerDetections(data);
           } else if (data.type === 'DETECT_ERROR') {
             this.isWorkerBusy = false;
-            console.warn('Worker detection error:', data.error);
-            this.scheduleNextWorkerFrame(60);
+            this.workerErrorCount = (this.workerErrorCount || 0) + 1;
+            console.warn('Worker detection error:', data.error, `(gagal ke-${this.workerErrorCount})`);
+            
+            // Auto-recovery: If YOLOv26 worker fails 3 times consecutively, seamlessly fallback to YOLOv8
+            if (this.workerErrorCount >= 3) {
+              if (this.modelVersion === 'YOLOv26') {
+                this.addLogEvent('Mengalihkan otomatis ke Ultralytics YOLOv8 Nano...');
+                this.switchModel('yolov8');
+              } else {
+                this.updateStatusBadge('Kendala AI Worker (Mencoba ulang...)', 'error');
+              }
+              this.workerErrorCount = 0;
+            }
+            this.scheduleNextWorkerFrame(80);
           }
         };
 
@@ -235,6 +259,59 @@ export class VehicleDetector {
         reject(err);
       }
     });
+  }
+
+  async switchModel(modelKey) {
+    const isYolo26 = modelKey === 'yolov26';
+    const targetModelUrl = isYolo26
+      ? `${window.location.origin}/models/yolov26n.onnx`
+      : `${window.location.origin}/models/yolov8n.onnx`;
+    const targetName = isYolo26 ? 'YOLOv26' : 'YOLOv8';
+
+    this.updateStatusBadge(`Beralih ke ${targetName}...`, 'loading');
+    this.addLogEvent(`Memuat model ${targetName}...`);
+    this.updateModelTabsUI(targetName);
+
+    try {
+      if (this.worker && this.engineType === 'yolo_worker') {
+        this.worker.postMessage({
+          type: 'SWITCH_MODEL',
+          modelUrl: targetModelUrl
+        });
+      } else {
+        if (this.yoloSession) {
+          try { await this.yoloSession.release(); } catch(e){}
+          this.yoloSession = null;
+        }
+        this.yoloSession = await ort.InferenceSession.create(targetModelUrl, {
+          executionProviders: ['webgpu', 'webgl', 'wasm'],
+          graphOptimizationLevel: 'all'
+        });
+        this.modelVersion = targetName;
+        this.updateStatusBadge(`${targetName} AI Aktif`, 'ready');
+        this.addLogEvent(`Model ${targetName} aktif via ONNX Runtime.`);
+      }
+    } catch (err) {
+      console.error(`Gagal beralih ke model ${targetName}:`, err);
+      this.updateStatusBadge(`Gagal memuat ${targetName}`, 'error');
+      this.addLogEvent(`Gagal memuat ${targetName}: ${err.message}`);
+    }
+  }
+
+  updateModelTabsUI(modelName) {
+    const is26 = (modelName || '').toLowerCase().includes('26');
+    const btn26 = document.getElementById('btn-model-yolo26');
+    const btn8 = document.getElementById('btn-model-yolo8');
+    if (btn26 && btn8) {
+      btn26.classList.toggle('active', is26);
+      btn8.classList.toggle('active', !is26);
+    }
+    const titleSub = document.querySelector('.ai-header-subtitle');
+    if (titleSub) {
+      titleSub.textContent = is26
+        ? 'Deteksi otomatis Kendaraan (Mobil & Sepeda Motor) berbasis Ultralytics YOLOv26 (NMS-Free End-to-End)'
+        : 'Deteksi otomatis Kendaraan (Mobil & Sepeda Motor) berbasis Ultralytics YOLOv8 Nano (Akurat & Responsif)';
+    }
   }
 
   async dispatchNextWorkerFrame() {
@@ -407,6 +484,16 @@ export class VehicleDetector {
         this.switchSource(src);
       });
     });
+
+    // 4b. AI Model Selector Tabs (YOLOv26 vs YOLOv8 Nano)
+    const btnModel26 = document.getElementById('btn-model-yolo26');
+    if (btnModel26) {
+      btnModel26.addEventListener('click', () => this.switchModel('yolov26'));
+    }
+    const btnModel8 = document.getElementById('btn-model-yolo8');
+    if (btnModel8) {
+      btnModel8.addEventListener('click', () => this.switchModel('yolov8'));
+    }
 
     // 5. Presets (Sensitif Motor: 18%, Standar: 25%, Ketat: 40%)
     document.querySelectorAll('.ai-preset-btn').forEach(btn => {
@@ -830,13 +917,14 @@ export class VehicleDetector {
     }
 
     if (this.isRunning) {
-      // 0ms timeout: execute next inference loop with zero delay
-      this.inferenceTimeout = setTimeout(() => this.runInferenceLoop(), 0);
+      // Throttle main-thread inference if active to maintain smooth 60 FPS UI
+      const delay = this.engineType === 'yolo' ? 80 : 0;
+      this.inferenceTimeout = setTimeout(() => this.runInferenceLoop(), delay);
     }
   }
 
   // =========================================================================
-  // ADVANCED LETTERBOXED YOLOv8 INFERENCE WITH MAXIMUM MOTORCYCLE RESPONSIVENESS
+  // ADVANCED LETTERBOXED YOLO INFERENCE WITH MAXIMUM MOTORCYCLE RESPONSIVENESS
   // =========================================================================
   async detectFrame() {
     if (!this.videoEl || this.videoEl.readyState < 2) return;
@@ -853,12 +941,12 @@ export class VehicleDetector {
     let processedDetections = [];
 
     // Calculate dynamic thresholds:
-    // Motorcycles are smaller and have lower confidence in CCTV -> highly sensitive threshold
-    const motoThreshold = Math.max(0.06, this.confidenceThreshold * 0.45);
-    const carThreshold = Math.max(0.16, this.confidenceThreshold * 0.85);
+    // Motorcycles are smaller and have lower confidence in CCTV -> sensitive threshold
+    const motoThreshold = Math.max(0.04, this.confidenceThreshold * 0.35);
+    const carThreshold = Math.max(0.12, this.confidenceThreshold * 0.65);
 
     if (this.engineType === 'yolo' && this.yoloSession) {
-      // 1. Direct High-Speed Resize to 640x640 (Native YOLOS/DETR format)
+      // 1. Direct High-Speed Resize to 640x640
       this.yoloCtx.drawImage(this.videoEl, 0, 0, 640, 640);
 
       const imgData = this.yoloCtx.getImageData(0, 0, 640, 640).data;
@@ -884,14 +972,16 @@ export class VehicleDetector {
 
       if (isYolo26) {
         // ===================================================================
-        // ULTRALYTICS YOLOv26: NMS-FREE END-TO-END DECODER (300 QUERIES)
+        // ULTRALYTICS YOLOv26: NMS-FREE END-TO-END DECODER (DUAL-HEAD QUERIES)
         // ===================================================================
         const logits = results.logits.data;
         const predBoxes = results.pred_boxes.data;
+        const numQueries = results.logits.dims ? results.logits.dims[1] : 300;
+        const numClasses = results.logits.dims ? results.logits.dims[2] : 80;
         const sigmoid = (x) => 1.0 / (1.0 + Math.exp(-x));
 
-        for (let i = 0; i < 300; i++) {
-          const off = i * 80;
+        for (let i = 0; i < numQueries; i++) {
+          const off = i * numClasses;
           const personScore = sigmoid(logits[off + 0]);
           const bicycleScore = sigmoid(logits[off + 1]);
           const carScore = sigmoid(logits[off + 2]);
@@ -902,7 +992,7 @@ export class VehicleDetector {
           const autoScore = Math.max(carScore, busScore, truckScore);
           const twoWheelerScore = Math.max(motoScore, bicycleScore);
 
-          const riderFusion = (personScore >= 0.08 && (twoWheelerScore >= 0.02 || personScore >= 0.14));
+          const riderFusion = (twoWheelerScore >= 0.04 && personScore >= 0.06);
           const effectiveMotoScore = riderFusion
             ? Math.max(twoWheelerScore, personScore * 0.90)
             : twoWheelerScore;
@@ -950,29 +1040,63 @@ export class VehicleDetector {
         }
       } else if (results.output0) {
         // ===================================================================
-        // ULTRALYTICS YOLOv8 FALLBACK: GRID-BASED RAW ANCHOR DECODER (8400 COLS)
+        // ULTRALYTICS YOLOv8: MULTI-SCALE CNN ANCHOR DECODER
         // ===================================================================
-        const outputData = results.output0.data;
-        const numCandidates = 8400;
+        const output = results.output0;
+        const outputData = output.data;
+        const dims = output.dims || [1, 84, 8400];
+        
+        let numCandidates = 8400;
+        let isTransposed = false;
+        if (dims.length === 3) {
+          if (dims[1] === 84 && dims[2] === 8400) {
+            numCandidates = dims[2];
+            isTransposed = false;
+          } else if (dims[1] === 8400 && dims[2] === 84) {
+            numCandidates = dims[1];
+            isTransposed = true;
+          }
+        }
 
         for (let c = 0; c < numCandidates; c++) {
-          const personScore = outputData[4 * numCandidates + c];
-          const bicycleScore = outputData[5 * numCandidates + c];
-          const carScore = outputData[6 * numCandidates + c];
-          const motoScore = outputData[7 * numCandidates + c];
-          const busScore = outputData[9 * numCandidates + c];
-          const truckScore = outputData[11 * numCandidates + c];
+          let personScore, bicycleScore, carScore, motoScore, busScore, truckScore;
+          let cx_raw, cy_raw, w_raw, h_raw;
+
+          if (!isTransposed) {
+            cx_raw = outputData[0 * numCandidates + c];
+            cy_raw = outputData[1 * numCandidates + c];
+            w_raw = outputData[2 * numCandidates + c];
+            h_raw = outputData[3 * numCandidates + c];
+
+            personScore = outputData[4 * numCandidates + c];
+            bicycleScore = outputData[5 * numCandidates + c];
+            carScore = outputData[6 * numCandidates + c];
+            motoScore = outputData[7 * numCandidates + c];
+            busScore = outputData[9 * numCandidates + c];
+            truckScore = outputData[11 * numCandidates + c];
+          } else {
+            const base = c * 84;
+            cx_raw = outputData[base + 0];
+            cy_raw = outputData[base + 1];
+            w_raw = outputData[base + 2];
+            h_raw = outputData[base + 3];
+
+            personScore = outputData[base + 4];
+            bicycleScore = outputData[base + 5];
+            carScore = outputData[base + 6];
+            motoScore = outputData[base + 7];
+            busScore = outputData[base + 9];
+            truckScore = outputData[base + 11];
+          }
 
           const autoScore = Math.max(carScore, busScore, truckScore);
           const twoWheelerScore = Math.max(motoScore, bicycleScore);
 
-          const riderFusion = (personScore >= 0.08 && (twoWheelerScore >= 0.02 || personScore >= 0.14));
+          const riderFusion = (twoWheelerScore >= 0.04 && personScore >= 0.06);
           const effectiveMotoScore = riderFusion 
             ? Math.max(twoWheelerScore, personScore * 0.90) 
             : twoWheelerScore;
 
-          const w_raw = outputData[2 * numCandidates + c];
-          const h_raw = outputData[3 * numCandidates + c];
           const aspectRatio = w_raw / Math.max(1, h_raw);
 
           let cls = null;
@@ -996,8 +1120,8 @@ export class VehicleDetector {
           }
 
           if (cls) {
-            const cx_norm = outputData[0 * numCandidates + c] / 640;
-            const cy_norm = outputData[1 * numCandidates + c] / 640;
+            const cx_norm = cx_raw / 640;
+            const cy_norm = cy_raw / 640;
             const w_norm = w_raw / 640;
             const h_norm = h_raw / 640;
 
