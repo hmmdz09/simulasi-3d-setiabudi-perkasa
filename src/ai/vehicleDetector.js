@@ -858,17 +858,8 @@ export class VehicleDetector {
     const carThreshold = Math.max(0.16, this.confidenceThreshold * 0.85);
 
     if (this.engineType === 'yolo' && this.yoloSession) {
-      // 1. Precise Letterboxing to 640x640 (maintains true aspect ratio without squishing!)
-      const scale = Math.min(640 / vidW, 640 / vidH);
-      const nw = Math.round(vidW * scale);
-      const nh = Math.round(vidH * scale);
-      const padX = (640 - nw) / 2;
-      const padY = (640 - nh) / 2;
-      this.letterbox = { scale, padX, padY };
-
-      this.yoloCtx.fillStyle = '#727272';
-      this.yoloCtx.fillRect(0, 0, 640, 640);
-      this.yoloCtx.drawImage(this.videoEl, padX, padY, nw, nh);
+      // 1. Direct High-Speed Resize to 640x640 (Native YOLOS/DETR format)
+      this.yoloCtx.drawImage(this.videoEl, 0, 0, 640, 640);
 
       const imgData = this.yoloCtx.getImageData(0, 0, 640, 640).data;
 
@@ -911,7 +902,7 @@ export class VehicleDetector {
           const autoScore = Math.max(carScore, busScore, truckScore);
           const twoWheelerScore = Math.max(motoScore, bicycleScore);
 
-          const riderFusion = (personScore >= 0.10 && (twoWheelerScore >= 0.03 || personScore >= 0.18));
+          const riderFusion = (personScore >= 0.08 && (twoWheelerScore >= 0.02 || personScore >= 0.14));
           const effectiveMotoScore = riderFusion
             ? Math.max(twoWheelerScore, personScore * 0.90)
             : twoWheelerScore;
@@ -927,31 +918,28 @@ export class VehicleDetector {
           let cls = null;
           let score = 0;
 
-          if (effectiveMotoScore >= motoThreshold && (effectiveMotoScore >= autoScore * 0.80 || aspectRatio < 0.72)) {
+          const isTwoWheeler = effectiveMotoScore >= motoThreshold;
+          const isAutomobile = autoScore >= carThreshold;
+
+          if (isTwoWheeler && (effectiveMotoScore >= autoScore * 0.65 || riderFusion || aspectRatio < 1.15)) {
             cls = 'motorcycle';
             score = effectiveMotoScore;
-          } else if (autoScore >= carThreshold && (autoScore > effectiveMotoScore || aspectRatio >= 0.72)) {
+          } else if (isAutomobile && (autoScore > effectiveMotoScore || aspectRatio >= 0.70)) {
             cls = 'car';
             score = autoScore;
-          } else if (effectiveMotoScore >= motoThreshold) {
+          } else if (isTwoWheeler) {
             cls = 'motorcycle';
             score = effectiveMotoScore;
-          } else if (autoScore >= carThreshold) {
+          } else if (isAutomobile) {
             cls = 'car';
             score = autoScore;
           }
 
           if (cls) {
-            const cx_letter = cx_norm * 640;
-            const cy_letter = cy_norm * 640;
-            const w_letter = w_norm * 640;
-            const h_letter = h_norm * 640;
-
-            const realX = Math.max(0, ((cx_letter - w_letter / 2) - padX) / scale);
-            const realY = Math.max(0, ((cy_letter - h_letter / 2) - padY) / scale);
-            const realW = Math.min(vidW - realX, w_letter / scale);
-            const heightMultiplier = (cls === 'motorcycle' && riderFusion) ? 1.35 : 1.0;
-            const realH = Math.min(vidH - realY, (h_letter * heightMultiplier) / scale);
+            const realX = Math.max(0, (cx_norm - w_norm / 2) * vidW);
+            const realY = Math.max(0, (cy_norm - h_norm / 2) * vidH);
+            const realW = Math.min(vidW - realX, w_norm * vidW);
+            const realH = Math.min(vidH - realY, h_norm * vidH);
 
             candidates.push({
               bbox: [realX, realY, realW, realH],
@@ -978,41 +966,45 @@ export class VehicleDetector {
           const autoScore = Math.max(carScore, busScore, truckScore);
           const twoWheelerScore = Math.max(motoScore, bicycleScore);
 
-          const riderFusion = (personScore >= 0.12 && (twoWheelerScore >= 0.04 || personScore >= 0.20));
+          const riderFusion = (personScore >= 0.08 && (twoWheelerScore >= 0.02 || personScore >= 0.14));
           const effectiveMotoScore = riderFusion 
             ? Math.max(twoWheelerScore, personScore * 0.90) 
             : twoWheelerScore;
 
-          const w_letter = outputData[2 * numCandidates + c];
-          const h_letter = outputData[3 * numCandidates + c];
-          const aspectRatio = w_letter / Math.max(1, h_letter);
+          const w_raw = outputData[2 * numCandidates + c];
+          const h_raw = outputData[3 * numCandidates + c];
+          const aspectRatio = w_raw / Math.max(1, h_raw);
 
           let cls = null;
           let score = 0;
 
-          if (effectiveMotoScore >= motoThreshold && (effectiveMotoScore >= autoScore * 0.80 || aspectRatio < 0.72)) {
+          const isTwoWheeler = effectiveMotoScore >= motoThreshold;
+          const isAutomobile = autoScore >= carThreshold;
+
+          if (isTwoWheeler && (effectiveMotoScore >= autoScore * 0.65 || riderFusion || aspectRatio < 1.15)) {
             cls = 'motorcycle';
             score = effectiveMotoScore;
-          } else if (autoScore >= carThreshold && (autoScore > effectiveMotoScore || aspectRatio >= 0.72)) {
+          } else if (isAutomobile && (autoScore > effectiveMotoScore || aspectRatio >= 0.70)) {
             cls = 'car';
             score = autoScore;
-          } else if (effectiveMotoScore >= motoThreshold) {
+          } else if (isTwoWheeler) {
             cls = 'motorcycle';
             score = effectiveMotoScore;
-          } else if (autoScore >= carThreshold) {
+          } else if (isAutomobile) {
             cls = 'car';
             score = autoScore;
           }
 
           if (cls) {
-            const cx_letter = outputData[0 * numCandidates + c];
-            const cy_letter = outputData[1 * numCandidates + c];
+            const cx_norm = outputData[0 * numCandidates + c] / 640;
+            const cy_norm = outputData[1 * numCandidates + c] / 640;
+            const w_norm = w_raw / 640;
+            const h_norm = h_raw / 640;
 
-            const realX = Math.max(0, ((cx_letter - w_letter / 2) - padX) / scale);
-            const realY = Math.max(0, ((cy_letter - h_letter / 2) - padY) / scale);
-            const realW = Math.min(vidW - realX, w_letter / scale);
-            const heightMultiplier = (cls === 'motorcycle' && riderFusion) ? 1.35 : 1.0;
-            const realH = Math.min(vidH - realY, (h_letter * heightMultiplier) / scale);
+            const realX = Math.max(0, (cx_norm - w_norm / 2) * vidW);
+            const realY = Math.max(0, (cy_norm - h_norm / 2) * vidH);
+            const realW = Math.min(vidW - realX, w_norm * vidW);
+            const realH = Math.min(vidH - realY, h_norm * vidH);
 
             candidates.push({
               bbox: [realX, realY, realW, realH],
@@ -1089,6 +1081,55 @@ export class VehicleDetector {
   }
 
   // =========================================================================
+  // PIXEL-PERFECT CANVAS TO VIDEO FRAME SYNCHRONIZATION
+  // =========================================================================
+  syncCanvasToVideo() {
+    if (!this.videoEl || !this.overlayCanvas) return;
+    const vidW = this.videoEl.videoWidth || this.videoEl.clientWidth || 640;
+    const vidH = this.videoEl.videoHeight || this.videoEl.clientHeight || 360;
+
+    const wrapper = this.viewportWrapper || this.videoEl.parentElement;
+    if (!wrapper) return;
+    const wrapW = wrapper.clientWidth;
+    const wrapH = wrapper.clientHeight;
+    if (!wrapW || !wrapH) return;
+
+    // Accurate letterbox/pillarbox calculation matching CSS object-fit: contain
+    const videoAspect = vidW / vidH;
+    const wrapAspect = wrapW / wrapH;
+
+    let renderW, renderH, renderX, renderY;
+    if (wrapAspect > videoAspect) {
+      // Black bars on left & right
+      renderH = wrapH;
+      renderW = wrapH * videoAspect;
+      renderY = 0;
+      renderX = (wrapW - renderW) / 2;
+    } else {
+      // Black bars on top & bottom
+      renderW = wrapW;
+      renderH = wrapW / videoAspect;
+      renderX = 0;
+      renderY = (wrapH - renderH) / 2;
+    }
+
+    if (this.overlayCanvas.width !== vidW || this.overlayCanvas.height !== vidH) {
+      this.overlayCanvas.width = vidW;
+      this.overlayCanvas.height = vidH;
+    }
+
+    const sLeft = `${Math.round(renderX)}px`;
+    const sTop = `${Math.round(renderY)}px`;
+    const sW = `${Math.round(renderW)}px`;
+    const sH = `${Math.round(renderH)}px`;
+
+    if (this.overlayCanvas.style.left !== sLeft) this.overlayCanvas.style.left = sLeft;
+    if (this.overlayCanvas.style.top !== sTop) this.overlayCanvas.style.top = sTop;
+    if (this.overlayCanvas.style.width !== sW) this.overlayCanvas.style.width = sW;
+    if (this.overlayCanvas.style.height !== sH) this.overlayCanvas.style.height = sH;
+  }
+
+  // =========================================================================
   // ZERO-LAG VELOCITY PREDICTION & SMOOTH FORWARD TRACKING
   // =========================================================================
   processTrackingAndCounting(predictions, w, h, captureMeta) {
@@ -1106,7 +1147,7 @@ export class VehicleDetector {
 
     // Dynamic matching distance scaled with video resolution
     const diag = Math.hypot(w, h);
-    const baseMatchDist = Math.max(160, diag * 0.14);
+    const baseMatchDist = Math.max(140, diag * 0.13);
 
     const matchedTrackIds = new Set();
 
@@ -1120,31 +1161,20 @@ export class VehicleDetector {
 
       for (const [id, track] of this.trackedVehicles.entries()) {
         if (matchedTrackIds.has(id)) continue;
-        if (track.class !== pred.class) continue;
 
-        // Predict where this track should be at the captured frame time:
-        let dt = 0;
-        if (captureVideoTime != null && track.lastVideoTime != null) {
-          dt = Math.max(0, captureVideoTime - track.lastVideoTime);
-          if (dt > 1.2 || dt < -0.1) dt = 0;
-        } else if (track.lastWallTime != null) {
-          dt = Math.max(0, (captureWallTime - track.lastWallTime) / 1000);
-          if (dt > 1.2) dt = 0;
-        }
+        const trackCx = track.cx;
+        const trackCy = track.cy;
 
-        const predCx = track.cx + (track.vx || 0) * dt;
-        const predCy = track.cy + (track.vy || 0) * dt;
+        const dist = Math.hypot(trackCx - cx, trackCy - cy);
+        const iou = this.computeIoU(pred.bbox, [track.cx - track.w / 2, track.cy - track.h / 2, track.w, track.h]);
 
-        const dist = Math.hypot(predCx - cx, predCy - cy);
-        const iou = this.computeIoU(pred.bbox, [predCx - track.w / 2, predCy - track.h / 2, track.w, track.h]);
-
-        // Wider match tolerance for agile motorcycles
+        const sameClass = track.class === pred.class;
         const matchThreshold = track.class === 'motorcycle'
-          ? Math.max(baseMatchDist * 1.3, 220)
-          : Math.max(baseMatchDist, Math.max(bw, bh) * 1.5);
+          ? Math.max(baseMatchDist * 1.3, 200)
+          : Math.max(baseMatchDist, Math.max(bw, bh) * 1.4);
 
-        if (iou > 0.10 || dist < matchThreshold) {
-          const score = dist - iou * 120;
+        if ((sameClass && (iou > 0.08 || dist < matchThreshold)) || (!sameClass && (iou > 0.35 || dist < matchThreshold * 0.55))) {
+          const score = dist - iou * 140;
           if (score < bestScore) {
             bestScore = score;
             bestMatchId = id;
@@ -1152,61 +1182,55 @@ export class VehicleDetector {
         }
       }
 
-      const playbackRate = (this.videoEl && this.videoEl.playbackRate) ? this.videoEl.playbackRate : 1.0;
-      const latencySec = Math.max(0, (now - captureWallTime) / 1000) * playbackRate;
-
       if (bestMatchId != null) {
         matchedTrackIds.add(bestMatchId);
         const track = this.trackedVehicles.get(bestMatchId);
-
         track.seenCount = (track.seenCount || 1) + 1;
 
-        // Accurate velocity measured between raw captured camera frames
-        const prevRawX = track.lastRawX ?? track.initX ?? cx;
-        const prevRawY = track.lastRawY ?? track.initY ?? cy;
-        const prevCapTime = track.lastCaptureWallTime ?? (captureWallTime - 0.05);
+        // Update class consensus
+        if (pred.score >= track.score * 0.85) {
+          track.class = pred.class;
+        }
 
-        const dtFrames = Math.max(0.016, (captureWallTime - prevCapTime) / 1000) * playbackRate;
-        const rawVx = (cx - prevRawX) / dtFrames;
-        const rawVy = (cy - prevRawY) / dtFrames;
+        // Measure smooth physical displacement between detection observations
+        const dx = cx - (track.lastRawX ?? cx);
+        const dy = cy - (track.lastRawY ?? cy);
+        const moveDist = Math.hypot(dx, dy);
 
-        // Clamp realistic vehicle pixel velocities
-        const clampedVx = Math.max(-1200, Math.min(1200, rawVx));
-        const clampedVy = Math.max(-1200, Math.min(1200, rawVy));
+        const dtSec = Math.max(0.016, (captureWallTime - (track.lastCaptureWallTime ?? (captureWallTime - 0.05))) / 1000);
 
-        // Exponential smoothing (75% new observation, 25% history)
-        track.vx = (track.vx != null && (track.vx !== 0 || track.vy !== 0))
-          ? track.vx * 0.25 + clampedVx * 0.75
-          : clampedVx;
-        track.vy = (track.vy != null && (track.vx !== 0 || track.vy !== 0))
-          ? track.vy * 0.25 + clampedVy * 0.75
-          : clampedVy;
+        if (moveDist >= 5 && dtSec > 0.02) {
+          const instVx = dx / dtSec;
+          const instVy = dy / dtSec;
+          track.vx = (track.vx || 0) * 0.60 + Math.max(-800, Math.min(800, instVx)) * 0.40;
+          track.vy = (track.vy || 0) * 0.60 + Math.max(-800, Math.min(800, instVy)) * 0.40;
+        } else if (moveDist < 3) {
+          track.vx = (track.vx || 0) * 0.50;
+          track.vy = (track.vy || 0) * 0.50;
+        }
 
-        // True Kinematic Latency Compensation:
-        // Position of vehicle RIGHT NOW on screen is raw detected position + velocity * latency!
-        const compensatedCx = cx + track.vx * latencySec;
-        const compensatedCy = cy + track.vy * latencySec;
+        // Gentle, clamped latency lead (at most 24px, zero jitter)
+        const latencySec = Math.max(0, Math.min(0.20, (now - captureWallTime) / 1000));
+        const leadX = Math.max(-24, Math.min(24, (track.vx || 0) * latencySec));
+        const leadY = Math.max(-24, Math.min(24, (track.vy || 0) * latencySec));
 
-        track.lastRawX = cx;
-        track.lastRawY = cy;
-        track.lastCaptureWallTime = captureWallTime;
-
-        track.cx = compensatedCx;
-        track.cy = compensatedCy;
-        track.smoothCx = compensatedCx;
-        track.smoothCy = compensatedCy;
-
+        track.targetCx = cx + leadX;
+        track.targetCy = cy + leadY;
+        track.cx = cx;
+        track.cy = cy;
         track.w = bw;
         track.h = bh;
         track.score = pred.score;
-        track.lastVideoTime = captureVideoTime;
+        track.lastRawX = cx;
+        track.lastRawY = cy;
+        track.lastCaptureWallTime = captureWallTime;
         track.lastWallTime = now;
         track.lastSeen = now;
 
-        // AUTOMATIC HIGH-RESPONSIVENESS COUNTING:
+        // Counting: confirmed after 2 frames or initial confidence >= 0.22
         if (!track.counted) {
-          const moveDist = Math.hypot(cx - (track.initX ?? cx), cy - (track.initY ?? cy));
-          if (track.seenCount >= 2 || moveDist >= 10 || track.score >= 0.25) {
+          const totalMove = Math.hypot(cx - (track.initX ?? cx), cy - (track.initY ?? cy));
+          if (track.seenCount >= 2 || totalMove >= 10 || track.score >= 0.22) {
             track.counted = true;
             this.recordCountEvent(track.class, track.score);
           }
@@ -1217,8 +1241,12 @@ export class VehicleDetector {
           id: newId,
           cx,
           cy,
+          targetCx: cx,
+          targetCy: cy,
           smoothCx: cx,
           smoothCy: cy,
+          smoothW: bw,
+          smoothH: bh,
           initX: cx,
           initY: cy,
           lastRawX: cx,
@@ -1233,11 +1261,10 @@ export class VehicleDetector {
           score: pred.score,
           firstSeen: now,
           lastSeen: now,
-          lastVideoTime: captureVideoTime,
           lastWallTime: now,
           counted: false
         };
-        if (pred.score >= 0.25) {
+        if (pred.score >= 0.22) {
           newTrack.counted = true;
           this.recordCountEvent(pred.class, pred.score);
         }
@@ -1298,18 +1325,15 @@ export class VehicleDetector {
   }
 
   // =========================================================================
-  // 60 FPS RENDER LOOP: FORWARD-EXTRAPOLATED REAL-TIME BOUNDING BOXES
+  // 60 FPS RENDER LOOP: PIXEL-PERFECT SYNCHRONIZED BOUNDING BOXES
   // =========================================================================
   renderCanvasFrame() {
     if (!this.videoEl || !this.overlayCanvas || !this.ctx) return;
 
-    const vidW = this.videoEl.videoWidth || this.videoEl.clientWidth || 640;
-    const vidH = this.videoEl.videoHeight || this.videoEl.clientHeight || 360;
+    this.syncCanvasToVideo();
 
-    if (this.overlayCanvas.width !== vidW || this.overlayCanvas.height !== vidH) {
-      this.overlayCanvas.width = vidW;
-      this.overlayCanvas.height = vidH;
-    }
+    const vidW = this.overlayCanvas.width;
+    const vidH = this.overlayCanvas.height;
 
     const ctx = this.ctx;
     ctx.clearRect(0, 0, vidW, vidH);
@@ -1330,27 +1354,31 @@ export class VehicleDetector {
       const cfg = this.classConfig[track.class] || { label: track.class, color: '#38bdf8' };
       const color = cfg.color;
 
-      // Real-Time 60 FPS Video-Synchronized Forward Extrapolation (Zero Lag & Zero Jitter)
+      // Real-Time 60 FPS forward extrapolation between worker updates
       let dt = 0;
       if (isPlaying && track.lastWallTime != null) {
         dt = Math.max(0, (now - track.lastWallTime) / 1000) * playbackRate;
-        if (dt > 1.2) dt = 0;
+        if (dt > 0.35) dt = 0.35;
       }
 
-      const targetCx = track.cx + (track.vx || 0) * dt;
-      const targetCy = track.cy + (track.vy || 0) * dt;
+      const forwardX = (track.targetCx ?? track.cx) + Math.max(-18, Math.min(18, (track.vx || 0) * dt));
+      const forwardY = (track.targetCy ?? track.cy) + Math.max(-18, Math.min(18, (track.vy || 0) * dt));
 
-      // Smooth Position Filter to eliminate bounding box jitter (0.85 for ultra-responsive zero-lag tracking)
+      // 60 FPS Smooth Position and Box Size Interpolation
       if (track.smoothCx === undefined) {
-        track.smoothCx = targetCx;
-        track.smoothCy = targetCy;
+        track.smoothCx = forwardX;
+        track.smoothCy = forwardY;
+        track.smoothW = track.w;
+        track.smoothH = track.h;
       } else {
-        track.smoothCx += (targetCx - track.smoothCx) * 0.85;
-        track.smoothCy += (targetCy - track.smoothCy) * 0.85;
+        track.smoothCx += (forwardX - track.smoothCx) * 0.75;
+        track.smoothCy += (forwardY - track.smoothCy) * 0.75;
+        track.smoothW += (track.w - track.smoothW) * 0.75;
+        track.smoothH += (track.h - track.smoothH) * 0.75;
       }
 
-      const renderX = track.smoothCx - track.w / 2;
-      const renderY = track.smoothCy - track.h / 2;
+      const renderX = track.smoothCx - track.smoothW / 2;
+      const renderY = track.smoothCy - track.smoothH / 2;
 
       ctx.save();
 
@@ -1360,7 +1388,7 @@ export class VehicleDetector {
       ctx.strokeStyle = color;
       ctx.lineWidth = 2.5;
       ctx.beginPath();
-      ctx.roundRect(renderX, renderY, track.w, track.h, 4);
+      ctx.roundRect(renderX, renderY, track.smoothW, track.smoothH, 4);
       ctx.stroke();
 
       // Clean Label Badge on top: Mobil or Sepeda Motor + Confidence %
@@ -1380,7 +1408,7 @@ export class VehicleDetector {
       const tagW = textWidth + 14;
       const tagH = 20;
       const tagX = Math.max(0, renderX);
-      const tagY = renderY > 24 ? renderY - tagH - 2 : renderY + track.h + 2;
+      const tagY = renderY > 24 ? renderY - tagH - 2 : renderY + track.smoothH + 2;
 
       ctx.fillStyle = color;
       ctx.shadowBlur = 6;

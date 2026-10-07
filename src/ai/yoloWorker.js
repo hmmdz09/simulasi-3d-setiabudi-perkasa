@@ -55,16 +55,8 @@ self.onmessage = async (e) => {
     const vidH = captureMeta.vidH || 360;
 
     try {
-      // 1. Precise Letterboxing to 640x640 on worker thread
-      const scale = Math.min(640 / vidW, 640 / vidH);
-      const nw = Math.round(vidW * scale);
-      const nh = Math.round(vidH * scale);
-      const padX = (640 - nw) / 2;
-      const padY = (640 - nh) / 2;
-
-      offCtx.fillStyle = '#727272';
-      offCtx.fillRect(0, 0, 640, 640);
-      offCtx.drawImage(bitmap, padX, padY, nw, nh);
+      // 1. Direct High-Speed Resize to 640x640 on worker thread (Native YOLOS/DETR format)
+      offCtx.drawImage(bitmap, 0, 0, 640, 640);
       bitmap.close(); // Immediate GPU memory release
 
       const imgData = offCtx.getImageData(0, 0, 640, 640).data;
@@ -97,8 +89,8 @@ self.onmessage = async (e) => {
       const results = await session.run(feeds);
 
       // 4. Candidate extraction with ultra-sensitive omnidirectional motorcycle detection
-      const motoThreshold = Math.max(0.045, confThreshold * 0.35);
-      const carThreshold = Math.max(0.14, confThreshold * 0.75);
+      const motoThreshold = Math.max(0.04, confThreshold * 0.35);
+      const carThreshold = Math.max(0.12, confThreshold * 0.70);
       const candidates = [];
 
       if (isYolo26 && results.logits && results.pred_boxes) {
@@ -121,7 +113,7 @@ self.onmessage = async (e) => {
           const twoWheelerScore = Math.max(motoScore, bicycleScore);
 
           // Sensitive rider fusion for Indonesian traffic CCTV
-          const riderFusion = (personScore >= 0.08 && (twoWheelerScore >= 0.025 || personScore >= 0.16));
+          const riderFusion = (personScore >= 0.08 && (twoWheelerScore >= 0.02 || personScore >= 0.14));
           const effectiveMotoScore = riderFusion
             ? Math.max(twoWheelerScore, personScore * 0.90)
             : twoWheelerScore;
@@ -141,11 +133,10 @@ self.onmessage = async (e) => {
           const isAutomobile = autoScore >= carThreshold;
 
           // Omnidirectional detection for motorcycles:
-          // Detect motorcycles whether moving straight, turning, or crossing horizontally from the side
-          if (isTwoWheeler && (effectiveMotoScore >= autoScore * 0.68 || riderFusion || aspectRatio < 1.15)) {
+          if (isTwoWheeler && (effectiveMotoScore >= autoScore * 0.65 || riderFusion || aspectRatio < 1.15)) {
             cls = 'motorcycle';
             score = effectiveMotoScore;
-          } else if (isAutomobile && (autoScore > effectiveMotoScore || aspectRatio >= 0.75)) {
+          } else if (isAutomobile && (autoScore > effectiveMotoScore || aspectRatio >= 0.70)) {
             cls = 'car';
             score = autoScore;
           } else if (isTwoWheeler) {
@@ -157,16 +148,11 @@ self.onmessage = async (e) => {
           }
 
           if (cls) {
-            const cx_letter = cx_norm * 640;
-            const cy_letter = cy_norm * 640;
-            const w_letter = w_norm * 640;
-            const h_letter = h_norm * 640;
-
-            const realX = Math.max(0, ((cx_letter - w_letter / 2) - padX) / scale);
-            const realY = Math.max(0, ((cy_letter - h_letter / 2) - padY) / scale);
-            const realW = Math.min(vidW - realX, w_letter / scale);
-            const heightMultiplier = (cls === 'motorcycle' && riderFusion) ? 1.35 : 1.0;
-            const realH = Math.min(vidH - realY, (h_letter * heightMultiplier) / scale);
+            // Direct exact scaling to native video pixel coordinates [0..vidW, 0..vidH]
+            const realX = Math.max(0, (cx_norm - w_norm / 2) * vidW);
+            const realY = Math.max(0, (cy_norm - h_norm / 2) * vidH);
+            const realW = Math.min(vidW - realX, w_norm * vidW);
+            const realH = Math.min(vidH - realY, h_norm * vidH);
 
             candidates.push({
               bbox: [realX, realY, realW, realH],
@@ -193,14 +179,14 @@ self.onmessage = async (e) => {
           const autoScore = Math.max(carScore, busScore, truckScore);
           const twoWheelerScore = Math.max(motoScore, bicycleScore);
 
-          const riderFusion = (personScore >= 0.08 && (twoWheelerScore >= 0.025 || personScore >= 0.16));
+          const riderFusion = (personScore >= 0.08 && (twoWheelerScore >= 0.02 || personScore >= 0.14));
           const effectiveMotoScore = riderFusion
             ? Math.max(twoWheelerScore, personScore * 0.90)
             : twoWheelerScore;
 
-          const w_letter = outputData[2 * numCandidates + c];
-          const h_letter = outputData[3 * numCandidates + c];
-          const aspectRatio = w_letter / Math.max(1, h_letter);
+          const w_raw = outputData[2 * numCandidates + c];
+          const h_raw = outputData[3 * numCandidates + c];
+          const aspectRatio = w_raw / Math.max(1, h_raw);
 
           let cls = null;
           let score = 0;
@@ -208,10 +194,10 @@ self.onmessage = async (e) => {
           const isTwoWheeler = effectiveMotoScore >= motoThreshold;
           const isAutomobile = autoScore >= carThreshold;
 
-          if (isTwoWheeler && (effectiveMotoScore >= autoScore * 0.68 || riderFusion || aspectRatio < 1.15)) {
+          if (isTwoWheeler && (effectiveMotoScore >= autoScore * 0.65 || riderFusion || aspectRatio < 1.15)) {
             cls = 'motorcycle';
             score = effectiveMotoScore;
-          } else if (isAutomobile && (autoScore > effectiveMotoScore || aspectRatio >= 0.75)) {
+          } else if (isAutomobile && (autoScore > effectiveMotoScore || aspectRatio >= 0.70)) {
             cls = 'car';
             score = autoScore;
           } else if (isTwoWheeler) {
@@ -223,14 +209,15 @@ self.onmessage = async (e) => {
           }
 
           if (cls) {
-            const cx_letter = outputData[0 * numCandidates + c];
-            const cy_letter = outputData[1 * numCandidates + c];
+            const cx_norm = outputData[0 * numCandidates + c] / 640;
+            const cy_norm = outputData[1 * numCandidates + c] / 640;
+            const w_norm = w_raw / 640;
+            const h_norm = h_raw / 640;
 
-            const realX = Math.max(0, ((cx_letter - w_letter / 2) - padX) / scale);
-            const realY = Math.max(0, ((cy_letter - h_letter / 2) - padY) / scale);
-            const realW = Math.min(vidW - realX, w_letter / scale);
-            const heightMultiplier = (cls === 'motorcycle' && riderFusion) ? 1.35 : 1.0;
-            const realH = Math.min(vidH - realY, (h_letter * heightMultiplier) / scale);
+            const realX = Math.max(0, (cx_norm - w_norm / 2) * vidW);
+            const realY = Math.max(0, (cy_norm - h_norm / 2) * vidH);
+            const realW = Math.min(vidW - realX, w_norm * vidW);
+            const realH = Math.min(vidH - realY, h_norm * vidH);
 
             candidates.push({
               bbox: [realX, realY, realW, realH],
