@@ -1079,13 +1079,22 @@ export class CityEnvironment {
         }
       }
 
-      this.scene.add(fenceGroup);
+      this.fencesGroup = this.fencesGroup || new THREE.Group();
+      this.fencesGroup.add(fenceGroup);
     }
 
     // Finalize 3D instanced leaves
     instancedLeavesMesh.count = leafInstanceCount;
     instancedLeavesMesh.instanceMatrix.needsUpdate = true;
-    this.scene.add(instancedLeavesMesh);
+    this.fencesGroup = this.fencesGroup || new THREE.Group();
+    this.fencesGroup.add(instancedLeavesMesh);
+    this.scene.add(this.fencesGroup);
+  }
+
+  setFencesVisible(visible) {
+    if (this.fencesGroup) {
+      this.fencesGroup.visible = visible;
+    }
   }
 
   // =========================================================================

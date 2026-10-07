@@ -81,9 +81,67 @@ export class HUDManager {
       });
     }
 
-    // 6. Pedestrian crossing state listener (with green wave corridor integration)
-    this.app.pedestrianSystem.onStateChange = (isCrossing, isButtonLocked, crossingSec, lockdownSec, mode, greenWaveInfo) => {
-      this.updateCrossingUI(isCrossing, isButtonLocked, crossingSec, lockdownSec, mode, greenWaveInfo);
+    // 5b. System Choice: Pake Sistem vs Tanpa Sistem (Top Dock)
+    const btnSysAfter = document.getElementById('btn-sys-after');
+    const btnSysBefore = document.getElementById('btn-sys-before');
+    if (btnSysAfter) {
+      btnSysAfter.addEventListener('click', () => {
+        this.setSystemMode('after');
+      });
+    }
+    if (btnSysBefore) {
+      btnSysBefore.addEventListener('click', () => {
+        this.setSystemMode('before');
+      });
+    }
+
+    // 5c. Session Switcher: Pagi vs Sore (Synchronized across both views)
+    const updateSessionButtons = (sessionId) => {
+      const isMorning = sessionId === 'morning';
+      const morningBtns = [document.getElementById('btn-session-morning'), document.getElementById('btn-session-morning-after')];
+      const eveningBtns = [document.getElementById('btn-session-evening'), document.getElementById('btn-session-evening-after')];
+
+      morningBtns.forEach(b => { if (b) b.classList.toggle('active', isMorning); });
+      eveningBtns.forEach(b => { if (b) b.classList.toggle('active', !isMorning); });
+
+      this.app.pedestrianSystem.setSession(sessionId);
+    };
+
+    ['btn-session-morning', 'btn-session-morning-after'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.addEventListener('click', () => updateSessionButtons('morning'));
+    });
+
+    ['btn-session-evening', 'btn-session-evening-after'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.addEventListener('click', () => updateSessionButtons('evening'));
+    });
+
+    // 5d. Comparison Report Modal
+    const btnOpenReport = document.getElementById('btn-open-report');
+    const modalReport = document.getElementById('modal-comparison-report');
+    const btnCloseReport = document.getElementById('btn-close-report');
+    const btnDismissReport = document.getElementById('btn-dismiss-report');
+
+    if (btnOpenReport && modalReport) {
+      btnOpenReport.addEventListener('click', () => {
+        modalReport.style.display = 'flex';
+      });
+    }
+    const closeModal = () => {
+      if (modalReport) modalReport.style.display = 'none';
+    };
+    if (btnCloseReport) btnCloseReport.addEventListener('click', closeModal);
+    if (btnDismissReport) btnDismissReport.addEventListener('click', closeModal);
+    if (modalReport) {
+      modalReport.addEventListener('click', (e) => {
+        if (e.target === modalReport) closeModal();
+      });
+    }
+
+    // 6. Pedestrian crossing state listener (with green wave corridor & empirical data integration)
+    this.app.pedestrianSystem.onStateChange = (isCrossing, isButtonLocked, crossingSec, lockdownSec, mode, greenWaveInfo, empiricalInfo) => {
+      this.updateCrossingUI(isCrossing, isButtonLocked, crossingSec, lockdownSec, mode, greenWaveInfo, empiricalInfo);
     };
 
     // 7. Toggle Control Deck Button
@@ -100,6 +158,41 @@ export class HUDManager {
         this.toggleControlDeck(true);
       });
     }
+  }
+
+  setSystemMode(mode) {
+    const btnAfter = document.getElementById('btn-sys-after');
+    const btnBefore = document.getElementById('btn-sys-before');
+    if (btnAfter && btnBefore) {
+      btnAfter.classList.toggle('active', mode === 'after');
+      btnBefore.classList.toggle('active', mode === 'before');
+    }
+
+    const viewAfter = document.getElementById('view-sys-after');
+    const viewBefore = document.getElementById('view-sys-before');
+    if (viewAfter && viewBefore) {
+      viewAfter.style.display = mode === 'after' ? 'flex' : 'none';
+      viewBefore.style.display = mode === 'before' ? 'flex' : 'none';
+    }
+
+    const chip = document.getElementById('chip-mode-status');
+    if (chip) {
+      if (mode === 'before') {
+        chip.innerHTML = '<i class="fa-solid fa-triangle-exclamation"></i> Tanpa Sistem';
+        chip.className = 'crossing-active-chip chip-amber';
+      } else {
+        const activeMode = this.app.pedestrianSystem.crossingMode;
+        if (activeMode === 'tunanetra') {
+          chip.innerHTML = '<i class="fa-solid fa-volume-high"></i> Tuna Netra';
+          chip.className = 'crossing-active-chip chip-amber';
+        } else {
+          chip.innerHTML = '<i class="fa-solid fa-traffic-light"></i> Normal';
+          chip.className = 'crossing-active-chip chip-green';
+        }
+      }
+    }
+
+    this.app.pedestrianSystem.setSystemMode(mode);
   }
 
   toggleControlDeck(forceState = null) {
@@ -123,7 +216,7 @@ export class HUDManager {
     }
   }
 
-  updateCrossingUI(isCrossing, isButtonLocked, crossingSec, lockdownSec, mode, greenWaveInfo = null) {
+  updateCrossingUI(isCrossing, isButtonLocked, crossingSec, lockdownSec, mode, greenWaveInfo = null, empiricalInfo = null) {
     const badge = document.getElementById('zebra-status-badge');
     const btn = document.getElementById('btn-zebra-cross');
     const cancelBtn = document.getElementById('btn-cancel-lockdown');
@@ -134,10 +227,50 @@ export class HUDManager {
     const countdown = document.getElementById('signal-countdown');
     const audioPulse = document.getElementById('audio-pulse-indicator');
 
-    // Extract green wave state
-    const gwBlocking = greenWaveInfo ? greenWaveInfo.isBlocking : false;
-    const gwRemaining = greenWaveInfo ? greenWaveInfo.remaining : 0;
-    const gwPending = greenWaveInfo ? greenWaveInfo.isPending : false;
+    // Extract green wave coordination flags
+    const gwBlocking = greenWaveInfo ? !!greenWaveInfo.isBlocking : false;
+    const gwPending = greenWaveInfo ? !!greenWaveInfo.isPending : false;
+    const gwRemaining = greenWaveInfo ? (greenWaveInfo.remaining || 0) : 0;
+
+    // Extract empirical mode & stats if in 'before' mode
+    if (empiricalInfo && empiricalInfo.systemMode === 'before') {
+      const s = empiricalInfo.currentSession;
+      if (s) {
+        const illegalEl = document.getElementById('stat-illegal-count');
+        const mupenasEl = document.getElementById('stat-mupenas-count');
+        if (illegalEl) illegalEl.textContent = `${s.illegal} Orang (${((s.illegal / s.total) * 100).toFixed(1)}%)`;
+        if (mupenasEl) mupenasEl.textContent = `${s.mupenas} Orang (${((s.mupenas / s.total) * 100).toFixed(1)}%)`;
+      }
+      const conflictEl = document.getElementById('live-conflict-counter');
+      const jaywalkerEl = document.getElementById('live-jaywalker-counter');
+      if (conflictEl && empiricalInfo.stats) conflictEl.textContent = empiricalInfo.stats.conflictsCount;
+      if (jaywalkerEl && empiricalInfo.stats) jaywalkerEl.textContent = empiricalInfo.stats.illegalCrossed + (empiricalInfo.activeJaywalkers || 0);
+
+      if (badge) {
+        badge.className = 'status-pill active-crossing';
+        badge.innerHTML = '<span class="pulse-dot-red"></span><span>Rawan Konflik (Tanpa Sistem)</span>';
+      }
+      return;
+    }
+
+    // Update queue & platoon consolidation cards
+    const qWaitingEl = document.getElementById('queue-waiting-counter');
+    const qPlatoonEl = document.getElementById('queue-platoon-size');
+    const qCrossedEl = document.getElementById('queue-crossed-counter');
+    if (empiricalInfo) {
+      if (qWaitingEl) {
+        const waitingCount = empiricalInfo.waitingQueueCount || 0;
+        const activeCount = empiricalInfo.activePlatoonCount || 0;
+        qWaitingEl.textContent = isCrossing ? `${activeCount} Menyeberang` : `${waitingCount} Orang`;
+      }
+      if (qPlatoonEl) {
+        const targetSize = empiricalInfo.platoonTargetSize || 7;
+        qPlatoonEl.textContent = `${targetSize} Orang`;
+      }
+      if (qCrossedEl && empiricalInfo.stats) {
+        qCrossedEl.textContent = `${empiricalInfo.stats.mupenasCrossed} Orang`;
+      }
+    }
 
     if (isCrossing) {
       // 1. ACTIVE PEDESTRIAN CROSSING (15 seconds)
@@ -274,7 +407,7 @@ export class HUDManager {
 
       if (badge) {
         badge.className = 'status-pill';
-        badge.innerHTML = '<span class="pulse-dot"></span><span>Koridor Normal</span>';
+        badge.innerHTML = '<span class="pulse-dot"></span><span>Koridor Tertib (Pake Sistem)</span>';
       }
 
       if (btn) {
@@ -295,6 +428,47 @@ export class HUDManager {
   update(dt) {
     this.updateStats();
     this.updateTelemetry();
+    this.updateEmpiricalCounters();
+    this.updateSimpangLightBadge();
+  }
+
+  updateSimpangLightBadge() {
+    if (!this.app.trafficSystem || typeof this.app.trafficSystem.getSimpangLightInfo !== 'function') return;
+    const info = this.app.trafficSystem.getSimpangLightInfo();
+    const textEl = document.getElementById('simpang-apill-text');
+    const iconEl = document.getElementById('simpang-apill-icon');
+    if (!textEl) return;
+
+    let sIcon = '🟢';
+    let sColor = '#10b981';
+    if (info.setiabudiState === 'YELLOW') {
+      sIcon = '🟡';
+      sColor = '#f59e0b';
+    } else if (info.setiabudiState === 'RED') {
+      sIcon = '🔴';
+      sColor = '#ef4444';
+    }
+
+    let bIcon = '🟢';
+    if (info.bajuriState === 'YELLOW') {
+      bIcon = '🟡';
+    } else if (info.bajuriState === 'RED') {
+      bIcon = '🔴';
+    }
+
+    textEl.textContent = `Setiabudi ${sIcon} ${info.setiabudiTimeRemaining}s | Bajuri ${bIcon} ${info.bajuriTimeRemaining}s`;
+    if (iconEl) {
+      iconEl.style.color = sColor;
+    }
+  }
+
+  updateEmpiricalCounters() {
+    if (!this.app.pedestrianSystem || this.app.pedestrianSystem.systemMode !== 'before') return;
+    const stats = this.app.pedestrianSystem.getStats();
+    const conflictEl = document.getElementById('live-conflict-counter');
+    const jaywalkerEl = document.getElementById('live-jaywalker-counter');
+    if (conflictEl) conflictEl.textContent = stats.conflictsCount;
+    if (jaywalkerEl) jaywalkerEl.textContent = stats.illegalCrossed + (stats.activeJaywalkers || 0);
   }
 
   updateStats() {

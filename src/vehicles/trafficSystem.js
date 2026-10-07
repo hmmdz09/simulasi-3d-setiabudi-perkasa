@@ -282,6 +282,8 @@ export class TrafficSystem {
         acceleration: 2.0,
         deceleration: 4.5,
         isActive: false,
+        isYieldingPedestrian: false,
+        launchBoostTimer: 0,
         leadVehicle: null,
         leadDistance: 999,
         heading: 0,
@@ -382,6 +384,8 @@ export class TrafficSystem {
     agent.vehicle.mesh.visible = false;
     agent.vehicle.setBraking(false);
     agent.vehicle.setTurnSignal(null);
+    agent.isYieldingPedestrian = false;
+    agent.launchBoostTimer = 0;
 
     const idx = this.activeVehicles.indexOf(agent);
     if (idx !== -1) {
@@ -398,26 +402,28 @@ export class TrafficSystem {
 
     const scaledDt = dt * this.simulationSpeed;
 
-    // Simpang 3 Traffic Light System Cycle Timer
+    // Simpang 3 Traffic Light System Cycle Timer (Exact calibration requested):
+    // Setiabudi & Terusan Setiabudi: Lampu Hijau 80s (76s Hijau + 4s Kuning), Lampu Merah 55s
+    // Sersan Bajuri: Lampu Merah 80s, Lampu Hijau 45s (45s Hijau + 3s Kuning + 7s All-Red = 55s)
     this.simpangLightTimer += scaledDt;
     let newPhase = this.simpangLightPhase;
     if (this.simpangLightPhase === 'SETIABUDI_GREEN') {
-      if (this.simpangLightTimer >= 18.0) {
+      if (this.simpangLightTimer >= 76.0) {
         newPhase = 'SETIABUDI_YELLOW';
         this.simpangLightTimer = 0;
       }
     } else if (this.simpangLightPhase === 'SETIABUDI_YELLOW') {
-      if (this.simpangLightTimer >= 3.0) {
+      if (this.simpangLightTimer >= 4.0) {
         newPhase = 'ALL_RED_1';
         this.simpangLightTimer = 0;
       }
     } else if (this.simpangLightPhase === 'ALL_RED_1') {
-      if (this.simpangLightTimer >= 1.5) {
+      if (this.simpangLightTimer >= 2.0) {
         newPhase = 'BAJURI_GREEN';
         this.simpangLightTimer = 0;
       }
     } else if (this.simpangLightPhase === 'BAJURI_GREEN') {
-      if (this.simpangLightTimer >= 14.0) {
+      if (this.simpangLightTimer >= 45.0) {
         newPhase = 'BAJURI_YELLOW';
         this.simpangLightTimer = 0;
       }
@@ -427,7 +433,8 @@ export class TrafficSystem {
         this.simpangLightTimer = 0;
       }
     } else if (this.simpangLightPhase === 'ALL_RED_2') {
-      if (this.simpangLightTimer >= 1.5) {
+      // 5.0s all-red clearance: 2.0s + 45.0s + 3.0s + 5.0s = 55.0s exact red time for Setiabudi!
+      if (this.simpangLightTimer >= 5.0) {
         newPhase = 'SETIABUDI_GREEN';
         this.simpangLightTimer = 0;
       }
@@ -599,6 +606,15 @@ export class TrafficSystem {
     agent.leadVehicle = leadAgent;
     agent.leadDistance = minGap;
 
+    // Detect mutual deadlock: if leadAgent also thinks we are their leadAgent!
+    if (leadAgent && leadAgent.leadVehicle === agent) {
+      // Break tie: vehicle further along its path has priority, ignore the other!
+      if (agent.distance >= leadAgent.distance) {
+        leadAgent = null;
+        minGap = 999;
+      }
+    }
+
     // Intelligent Driver Model (IDM) acceleration calculation
     const v = agent.speed;
     const v0 = agent.desiredSpeed;
@@ -616,10 +632,8 @@ export class TrafficSystem {
     const sStar = s0 + Math.max(0, v * T + (v * deltaV) / (2 * Math.sqrt(aMax * b)));
     let accel = aMax * (1 - Math.pow(v / v0, 4) - Math.pow(sStar / Math.max(0.4, minGap), 2));
 
-    // Yield logic 1: Zebra Crossing Stop Line
-    if (this.pedestrianCrossingActive) {
-      accel = this.applyZebraYield(agent, accel);
-    }
+    // Yield logic 1: Comprehensive Pedestrian Crossing & Safety Yield
+    accel = this.applyPedestrianYield(agent, accel, dt);
 
     // Yield logic 2: Simpang 3 Traffic Light System
     accel = this.applySimpangTrafficLightYield(agent, accel);
@@ -635,48 +649,52 @@ export class TrafficSystem {
       }
     }
 
+    // Avoid excessive negative acceleration if lead vehicle is actively moving
+    if (leadAgent && leadAgent.speed > 0.8 && minGap > 1.8 && accel < -2.0) {
+      accel = -1.2;
+    }
+
     // Bumper safety buffer: only zero velocity if lead vehicle is genuinely stopped and we haven't been stuck
-    if (leadAgent && minGap < 0.65 && leadAgent.speed === 0 && (agent.stuckTimer || 0) < 1.5) {
+    if (leadAgent && minGap < 0.5 && leadAgent.speed === 0 && (agent.stuckTimer || 0) < 1.0) {
       agent.speed = 0;
     }
 
     // Bulletproof Anti-Freeze Watchdog: Prevents any vehicle from getting stuck in the middle of the road
-    if (agent.speed < 0.4) {
-      agent.stuckTimer = (agent.stuckTimer || 0) + dt;
+    if (agent.speed < 0.35) {
+      // Pedestrian yielding active: NEVER trigger watchdog! Legal mandatory wait!
+      if (agent.isYieldingPedestrian) {
+        agent.stuckTimer = 0;
+      } else {
+        agent.stuckTimer = (agent.stuckTimer || 0) + dt;
 
-      // Check if stopped legitimately at an active red light stop line
-      let isLegitimateRedLight = false;
+        // 1. Valid queuing: stopped behind a lead vehicle that is stopped
+        const isQueuingBehindLead = leadAgent && minGap < 6.5 && leadAgent.speed < 0.8;
 
-      // 1. Simpang 3 Setiabudi North L1 stop line (Z ~ -55.5)
-      if (this.simpangLightPhase !== 'SETIABUDI_GREEN' && (agent.pathKey === 'Setiabudi_North_L1' || agent.pathKey === 'Setiabudi_North_L2')) {
-        if (agentPos.z > -68.0 && agentPos.z < -53.0) isLegitimateRedLight = true;
-      }
-      // 2. Simpang 3 Sersan Bajuri stop bar (X ~ -14.5)
-      if (this.simpangLightPhase !== 'BAJURI_GREEN' && agent.pathKey === 'Sersan_Bajuri_To_Setiabudi') {
-        if (agentPos.x < -13.5 && agentPos.x > -26.0) isLegitimateRedLight = true;
-      }
-      // 3. Simpang 3 Setiabudi South stop line (Z ~ -80.5)
-      if (this.simpangLightPhase !== 'SETIABUDI_GREEN' && agent.pathKey.startsWith('Setiabudi_South')) {
-        if (agentPos.z > -96.0 && agentPos.z < -78.0) isLegitimateRedLight = true;
-      }
-      // 4. Zebra Crossing Setiabudi South stop line (Z ~ -12.5)
-      if (this.pedestrianCrossingActive && agent.pathKey.startsWith('Setiabudi_South')) {
-        if (agentPos.z > -28.0 && agentPos.z < -10.5) isLegitimateRedLight = true;
-      }
-      // 5. Zebra Crossing Setiabudi North stop line (Z ~ -3.5)
-      if (this.pedestrianCrossingActive && agent.pathKey.startsWith('Setiabudi_North')) {
-        if (agentPos.z > -5.0 && agentPos.z < 15.0) isLegitimateRedLight = true;
-      }
-
-      if (!isLegitimateRedLight) {
-        // If stopped in the middle of the road for > 1.8s, force forward acceleration to break deadlock
-        if (agent.stuckTimer > 1.8) {
-          accel = Math.max(2.2, accel);
-          agent.speed = Math.max(2.5, agent.speed);
+        // 2. Legitimate red light approach corridors
+        let isLegitimateRedLight = false;
+        if (this.simpangLightPhase !== 'SETIABUDI_GREEN') {
+          if ((agent.pathKey === 'Setiabudi_North_L1' || agent.pathKey === 'Setiabudi_North_L2') && agentPos.z > -85.0 && agentPos.z <= -54.5) {
+            isLegitimateRedLight = true;
+          }
+          if (agent.pathKey.startsWith('Setiabudi_South') && agentPos.z >= -120.0 && agentPos.z <= -79.5) {
+            isLegitimateRedLight = true;
+          }
         }
-        // If stuck for > 5.5s (e.g. mutual head-on pinch), cleanly recycle vehicle so the road clears
-        if (agent.stuckTimer > 5.5) {
-          agent.distance = totalLength;
+        if (this.simpangLightPhase !== 'BAJURI_GREEN' && agent.pathKey === 'Sersan_Bajuri_To_Setiabudi') {
+          if (agentPos.x < -13.5 && agentPos.x > -40.0) {
+            isLegitimateRedLight = true;
+          }
+        }
+
+        const maxAllowedWait = (isLegitimateRedLight || (isQueuingBehindLead && this.simpangLightPhase !== 'SETIABUDI_GREEN')) ? 5.0 : 1.8;
+
+        if (agent.stuckTimer > maxAllowedWait) {
+          // Nudge vehicle forward!
+          accel = Math.max(2.2, accel);
+          agent.speed = Math.max(2.0, agent.speed);
+        }
+        if (agent.stuckTimer > 8.0) {
+          agent.distance = totalLength; // safely recycle deadlocked vehicle
         }
       }
     } else {
@@ -721,34 +739,174 @@ export class TrafficSystem {
     agent.vehicle.update(dt, time);
   }
 
-  applyZebraYield(agent, currentAccel) {
-    // Zebra crossing on Setiabudi is at Z = -8.0
-    // Southbound lanes (traveling on East side X > 0, from negative Z to positive Z): stop line at Z = -12.5
-    // Northbound lanes (traveling on West side X < 0, from positive Z to negative Z): stop line at Z = -3.5
-    const pos = agent.vehicle.mesh.position;
+  applyPedestrianYield(agent, currentAccel, dt) {
+    const wasYielding = agent.isYieldingPedestrian || false;
+    agent.isYieldingPedestrian = false;
+    if (!this.pedestrianSystem) return currentAccel;
 
-    if (agent.pathKey.startsWith('Setiabudi_South')) {
-      // Approaching zebra crossing from North: Z in [-35, -12.0]
-      if (pos.z > -35 && pos.z < -11.5) {
-        const distToStop = -12.5 - pos.z;
-        if (distToStop > 0.5) {
-          const decel = (agent.speed * agent.speed) / (2 * distToStop);
-          return Math.min(currentAccel, -decel - 0.5);
-        } else {
-          return -agent.deceleration;
+    const agentPos = agent.vehicle.mesh.position;
+    const forwardX = Math.sin(agent.heading);
+    const forwardZ = Math.cos(agent.heading);
+
+    // Perpendicular unit vector (pointing to vehicle's right side)
+    const perpX = forwardZ;
+    const perpZ = -forwardX;
+
+    const isMotor = agent.vehicle.type === 'motorcycle';
+    const isBusOrTruck = agent.vehicle.type === 'bus' || agent.vehicle.type === 'truck';
+    const bodyHalfWid = isMotor ? 0.40 : (isBusOrTruck ? 1.25 : 0.92);
+    const halfLen = agent.vehicle.length * 0.5;
+
+    let closestHazardDist = 999;
+    let conflictPed = null;
+
+    // Compile active pedestrians crossing or on the road surface / curbs (|X| < 9.2)
+    const pedsToCheck = [];
+
+    // 1. Pelican zebra crossing pedestrian platoon / group
+    if (this.pedestrianSystem.isCrossing) {
+      const crossingGroup = (typeof this.pedestrianSystem.getActiveCrossingPedestrians === 'function')
+        ? this.pedestrianSystem.getActiveCrossingPedestrians()
+        : [];
+
+      if (crossingGroup && crossingGroup.length > 0) {
+        for (let k = 0; k < crossingGroup.length; k++) {
+          const cp = crossingGroup[k];
+          if (Math.abs(cp.x) < 9.5) {
+            pedsToCheck.push({
+              x: cp.x,
+              z: cp.z,
+              moveDir: this.pedestrianSystem.crossingDirection === 1 ? -1 : 1, // 1: East->West (-X), -1: West->East (+X)
+              speed: cp.speed || 3.0,
+              raw: cp.raw || null
+            });
+          }
+        }
+      } else if (this.pedestrianSystem.pedestrianMesh && this.pedestrianSystem.pedestrianMesh.visible) {
+        const pMesh = this.pedestrianSystem.pedestrianMesh;
+        if (Math.abs(pMesh.position.x) < 9.5) {
+          pedsToCheck.push({
+            x: pMesh.position.x,
+            z: pMesh.position.z,
+            moveDir: this.pedestrianSystem.crossingDirection === 1 ? -1 : 1,
+            speed: this.pedestrianSystem.crossingSpeed || 3.0,
+            raw: null
+          });
         }
       }
-    } else if (agent.pathKey.startsWith('Setiabudi_North')) {
-      // Approaching zebra crossing from South: Z in [15, -2.5]
-      if (pos.z < 20 && pos.z > -3.0) {
-        const distToStop = pos.z - (-3.2);
-        if (distToStop > 0.5) {
-          const decel = (agent.speed * agent.speed) / (2 * distToStop);
-          return Math.min(currentAccel, -decel - 0.5);
-        } else {
-          return -agent.deceleration;
+    }
+
+    // 2. Autonomous pedestrians (jaywalkers)
+    if (this.pedestrianSystem.autonomousPedestrians && this.pedestrianSystem.autonomousPedestrians.length > 0) {
+      for (let i = 0; i < this.pedestrianSystem.autonomousPedestrians.length; i++) {
+        const ap = this.pedestrianSystem.autonomousPedestrians[i];
+        if (Math.abs(ap.currentX) < 9.2) {
+          pedsToCheck.push({
+            x: ap.currentX,
+            z: ap.zPos,
+            moveDir: ap.direction === 1 ? -1 : 1,
+            speed: ap.speed || 1.4,
+            raw: ap
+          });
         }
       }
+    }
+
+    // Check each pedestrian against our vehicle's path
+    for (let i = 0; i < pedsToCheck.length; i++) {
+      const p = pedsToCheck[i];
+      const dx = p.x - agentPos.x;
+      const dz = p.z - agentPos.z;
+
+      // Longitudinal distance from vehicle center along heading
+      const dForward = dx * forwardX + dz * forwardZ;
+      // Distance from FRONT BUMPER to pedestrian
+      const bumperDist = dForward - halfLen;
+
+      // Ignore if pedestrian is behind front bumper or more than 26 meters ahead
+      if (bumperDist < -0.3 || bumperDist > 26.0) continue;
+
+      // Perpendicular lateral distance from vehicle centerline
+      const dLateralSigned = dx * perpX + dz * perpZ;
+      const dLateral = Math.abs(dLateralSigned);
+
+      // Pedestrian lateral velocity along vehicle perpendicular axis:
+      const pedVx = p.moveDir * p.speed;
+      const latRate = pedVx * perpX;
+
+      // Is the pedestrian moving TOWARDS the vehicle's centerline or AWAY?
+      // When dLateralSigned > 0 (pedestrian to right): moving left (latRate < 0) means towards centerline
+      // When dLateralSigned < 0 (pedestrian to left): moving right (latRate > 0) means towards centerline
+      const isMovingTowardsCenterline = (dLateralSigned * latRate) < -0.05;
+      const isMovingAwayFromCenterline = (dLateralSigned * latRate) > 0.05;
+
+      // Corridor clearance limits:
+      // When pedestrian is moving towards vehicle: anticipate and yield earlier so braking is smooth
+      // When pedestrian is moving away: release as soon as they clear the vehicle body + small margin!
+      let effectiveCorridorHalfWid;
+      if (isMovingTowardsCenterline) {
+        // Anticipate pedestrian entering our lane
+        effectiveCorridorHalfWid = isMotor ? (bodyHalfWid + 0.70) : (bodyHalfWid + 1.25);
+      } else if (isMovingAwayFromCenterline) {
+        // Pedestrian is walking AWAY and clearing our lane!
+        // The instant they are past the vehicle's outer edge, front of vehicle is CLEAR!
+        effectiveCorridorHalfWid = isMotor ? (bodyHalfWid + 0.15) : (bodyHalfWid + 0.25);
+      } else {
+        // Standing still or directly on centerline
+        effectiveCorridorHalfWid = bodyHalfWid + 0.35;
+      }
+
+      if (dLateral < effectiveCorridorHalfWid) {
+        if (bumperDist < closestHazardDist) {
+          closestHazardDist = bumperDist;
+          conflictPed = p.raw;
+        }
+      }
+    }
+
+    // IF A PEDESTRIAN IS PRESENT DIRECTLY IN OR ABOUT TO STEP INTO OUR LANE:
+    if (closestHazardDist < 26.0) {
+      agent.isYieldingPedestrian = true;
+      agent.launchBoostTimer = 0; // cancel any previous boost
+      agent.vehicle.setBraking(true);
+
+      // Stop dead if pedestrian is within 2.5m of front bumper
+      if (closestHazardDist < 2.5) {
+        agent.speed = 0;
+        if (conflictPed && this.pedestrianSystem.recordConflict) {
+          this.pedestrianSystem.recordConflict(agent, conflictPed);
+        }
+        return -agent.deceleration * 3.0;
+      } else if (closestHazardDist < 12.0) {
+        // Decisive responsive braking to stop 1.8m before pedestrian
+        const distToStop = Math.max(0.5, closestHazardDist - 1.8);
+        const decel = (agent.speed * agent.speed) / (2 * distToStop);
+        const minBrake = isMotor ? 6.5 : 5.0;
+        return Math.min(currentAccel, -Math.max(minBrake, decel + 2.5));
+      } else {
+        // Smooth deceleration from further away
+        return Math.min(currentAccel, -2.8);
+      }
+    }
+
+    // IF LANE IS CLEAR (no pedestrian in front, or pedestrian has already passed):
+    // If we WERE yielding just a moment ago, IMMEDIATELY TANCAP GAS MAJU!
+    if (wasYielding) {
+      agent.launchBoostTimer = isMotor ? 1.8 : 1.4;
+      agent.vehicle.setBraking(false);
+      // Instant snappy launch off the mark
+      const launchSpeed = isMotor ? 4.2 : 2.8;
+      const launchAccel = isMotor ? 5.5 : 4.2;
+      agent.speed = Math.max(launchSpeed, agent.speed);
+      return Math.max(launchAccel, currentAccel);
+    }
+
+    // Continue snappy launch boost for duration
+    if (agent.launchBoostTimer > 0) {
+      agent.launchBoostTimer -= dt;
+      agent.vehicle.setBraking(false);
+      const boostAccel = isMotor ? 4.8 : 3.6;
+      return Math.max(boostAccel, currentAccel);
     }
 
     return currentAccel;
@@ -759,68 +917,67 @@ export class TrafficSystem {
     const isSetiabudiGreen = this.simpangLightPhase === 'SETIABUDI_GREEN';
     const isBajuriGreen = this.simpangLightPhase === 'BAJURI_GREEN';
 
-    // 1. Setiabudi Northbound right lane (through traffic L1 on X = -1.9) approaching Simpang 3 (Stop line at Z = -55.5)
-    // Moving from positive Z to negative Z
-    // IMPORTANT: Kendaraan yang belok ke Sersan Bajuri ('Setiabudi_To_Sersan_Bajuri') berada di JALUR KIRI (X = -5.8)
-    // dan BISA JALAN TERUS belok ke Sersan Bajuri walau jalur kanan (Setiabudi North L1) merah!
+    // 1. Setiabudi Northbound (Stop line at Z = -55.5)
+    // Decreasing Z: approaching from South (e.g. -25 down to -55.5)
     if (agent.pathKey === 'Setiabudi_North_L1' || agent.pathKey === 'Setiabudi_North_L2' || agent.pathKey === 'Setiabudi_To_Sersan_Urip') {
       if (!isSetiabudiGreen) {
-        // Approaching stop line from South: pos.z in [-28, -54.5]
-        if (pos.z < -28 && pos.z > -55.0) {
-          const distToStop = pos.z - (-55.2);
-          if (distToStop > 0.5) {
+        if (pos.z < -25.0 && pos.z >= -55.5) {
+          const distToStop = pos.z - (-55.5);
+          if (distToStop > 0.6) {
             const decel = (agent.speed * agent.speed) / (2 * distToStop);
-            return Math.min(currentAccel, -decel - 0.6);
+            return Math.min(currentAccel, -decel - 0.7);
           } else {
+            agent.speed = 0;
             return -agent.deceleration;
           }
         }
       }
     }
 
-    // 2. Setiabudi Southbound approaching Simpang 3 (Stop line at Z = -80.5)
-    // Moving from negative Z to positive Z
+    // 2. Setiabudi Southbound (Stop line at Z = -80.5)
+    // Increasing Z: approaching from North (e.g. -120 up to -80.5)
     if (agent.pathKey.startsWith('Setiabudi_South')) {
       if (!isSetiabudiGreen) {
-        // Approaching stop line from North: pos.z in [-108, -81.0]
-        if (pos.z > -108 && pos.z < -81.0) {
-          const distToStop = -80.8 - pos.z;
-          if (distToStop > 0.5) {
+        if (pos.z > -120.0 && pos.z <= -80.5) {
+          const distToStop = -80.5 - pos.z;
+          if (distToStop > 0.6) {
             const decel = (agent.speed * agent.speed) / (2 * distToStop);
-            return Math.min(currentAccel, -decel - 0.6);
+            return Math.min(currentAccel, -decel - 0.7);
           } else {
+            agent.speed = 0;
             return -agent.deceleration;
           }
         }
       }
     }
 
-    // 3. Sersan Bajuri exiting into Setiabudi (Stop bar at X = -14.5, Z = -78.0)
-    // Moving from negative X towards Setiabudi (X = -32 -> -14.5)
+    // 3. Sersan Bajuri exiting into Setiabudi (Stop bar at X = -14.5)
+    // Increasing X: approaching from West (e.g. -35 up to -14.5)
     if (agent.pathKey === 'Sersan_Bajuri_To_Setiabudi') {
       if (!isBajuriGreen) {
-        if (pos.x < -14.5 && pos.x > -32.0) {
+        if (pos.x > -35.0 && pos.x <= -14.5) {
           const distToStop = -14.5 - pos.x;
-          if (distToStop > 0.5) {
+          if (distToStop > 0.6) {
             const decel = (agent.speed * agent.speed) / (2 * distToStop);
-            return Math.min(currentAccel, -decel - 0.6);
+            return Math.min(currentAccel, -decel - 0.7);
           } else {
+            agent.speed = 0;
             return -agent.deceleration;
           }
         }
       }
     }
 
-    // 4. Sersan Urip exiting into Setiabudi (Stop bar at X = 9.2)
-    // Moving from positive X towards Setiabudi (X = 30 -> 9.5)
+    // 4. Sersan Urip exiting into Setiabudi (Stop bar at X = 9.5)
     if (agent.pathKey === 'Sersan_Urip_To_Setiabudi') {
       if (!isBajuriGreen) {
-        if (pos.x > 9.5 && pos.x < 32.0) {
+        if (pos.x > 9.5 && pos.x < 35.0) {
           const distToStop = pos.x - 9.5;
-          if (distToStop > 0.5) {
+          if (distToStop > 0.6) {
             const decel = (agent.speed * agent.speed) / (2 * distToStop);
-            return Math.min(currentAccel, -decel - 0.6);
+            return Math.min(currentAccel, -decel - 0.7);
           } else {
+            agent.speed = 0;
             return -agent.deceleration;
           }
         }
@@ -834,12 +991,15 @@ export class TrafficSystem {
     const pos = agent.vehicle.mesh.position;
 
     // Case A: Southbound turning right across oncoming into Jl. Perkasa
-    // Yield ONLY before crossing the center line (pos.x > 0.6 and pos.z < 6.0).
-    // Once it initiates the turn and crosses center (pos.x <= 0.6), it MUST CLEAR THE INTERSECTION!
     if (agent.pathKey === 'Setiabudi_South_Turn_Perkasa') {
+      // If already started crossing the oncoming lane (X < 0.6), commit and clear quickly!
+      if (pos.x <= 0.6) {
+        return currentAccel;
+      }
       if (pos.z > -10.0 && pos.z < 6.0 && pos.x > 0.6) {
         const oncomingPresent = this.activeVehicles.some(v =>
           v.pathKey.startsWith('Setiabudi_North') &&
+          v.speed > 1.5 && // Only yield to actively moving oncoming vehicles!
           v.vehicle.mesh.position.z > 6.0 &&
           v.vehicle.mesh.position.z < 30.0
         );
@@ -856,16 +1016,19 @@ export class TrafficSystem {
     }
 
     // Case B: Exiting Jl. Perkasa at stop line (X = -8.5)
-    // Yield ONLY while behind the stop line (pos.x < -9.2).
-    // Once it passes pos.x >= -9.2, it has entered Setiabudi and MUST NOT STOP IN THE ROADWAY!
     if (agent.pathKey.startsWith('Perkasa_Exit')) {
-      if (pos.x < -9.2 && pos.x > -22.0) {
+      // If already entered Setiabudi (X > -8.5), commit and keep moving!
+      if (pos.x >= -8.5) {
+        return currentAccel;
+      }
+      if (pos.x < -8.5 && pos.x > -22.0) {
         const setiabudiTrafficPresent = this.activeVehicles.some(v =>
           (v.pathKey.startsWith('Setiabudi_South') || v.pathKey.startsWith('Setiabudi_North')) &&
+          v.speed > 1.5 && // Only yield to actively moving Setiabudi traffic!
           Math.abs(v.vehicle.mesh.position.z - 12.0) < 16.0
         );
         if (setiabudiTrafficPresent) {
-          const distToStop = -9.2 - pos.x;
+          const distToStop = -8.5 - pos.x;
           if (distToStop > 1.0) {
             const decel = (agent.speed * agent.speed) / (2 * distToStop);
             return Math.min(currentAccel, -decel - 0.8);
@@ -877,20 +1040,25 @@ export class TrafficSystem {
     }
 
     // Case C: Exiting Sersan Bajuri yields before entering Setiabudi Southbound
-    // Yield ONLY behind the stop bar (pos.x < -14.2).
-    // CRITICAL: Once pos.x >= -14.2, the vehicle has entered the apron/roadway.
-    // It MUST NOT stop inside Setiabudi (which causes mutual deadlocks with Southbound traffic)!
-    // It merges smoothly using regular car-following dynamics (IDM).
     if (agent.pathKey === 'Sersan_Bajuri_To_Setiabudi') {
-      if (pos.x < -14.2 && pos.x > -28.0) {
+      // If Bajuri light is GREEN, Bajuri traffic has priority right of way! Do not yield!
+      if (this.simpangLightPhase === 'BAJURI_GREEN') {
+        return currentAccel;
+      }
+      // If already past merge point into Setiabudi (X > -14.0), commit and keep moving South!
+      if (pos.x >= -14.0) {
+        return currentAccel;
+      }
+      if (pos.x < -14.0 && pos.x > -28.0) {
         const setiabudiSouthPresent = this.activeVehicles.some(v =>
           v !== agent &&
           v.pathKey.startsWith('Setiabudi_South') &&
+          v.speed > 1.5 && // Only yield to actively moving Southbound vehicles!
           v.vehicle.mesh.position.z > -86.0 &&
           v.vehicle.mesh.position.z < -66.0
         );
         if (setiabudiSouthPresent) {
-          const distToMerge = -14.2 - pos.x;
+          const distToMerge = -14.0 - pos.x;
           if (distToMerge > 0.8) {
             const decel = (agent.speed * agent.speed) / (2 * distToMerge);
             return Math.min(currentAccel, -decel - 0.7);
@@ -902,6 +1070,63 @@ export class TrafficSystem {
     }
 
     return currentAccel;
+  }
+
+  getSimpangLightInfo() {
+    let setiabudiState = 'RED';
+    let setiabudiTimeRemaining = 0;
+    let bajuriState = 'RED';
+    let bajuriTimeRemaining = 0;
+
+    const t = this.simpangLightTimer;
+    if (this.simpangLightPhase === 'SETIABUDI_GREEN') {
+      setiabudiState = 'GREEN';
+      setiabudiTimeRemaining = Math.max(0, Math.ceil(76.0 - t));
+      bajuriState = 'RED';
+      bajuriTimeRemaining = Math.max(0, Math.ceil((76.0 - t) + 4.0 + 2.0));
+    } else if (this.simpangLightPhase === 'SETIABUDI_YELLOW') {
+      setiabudiState = 'YELLOW';
+      setiabudiTimeRemaining = Math.max(0, Math.ceil(4.0 - t));
+      bajuriState = 'RED';
+      bajuriTimeRemaining = Math.max(0, Math.ceil((4.0 - t) + 2.0));
+    } else if (this.simpangLightPhase === 'ALL_RED_1') {
+      setiabudiState = 'RED';
+      setiabudiTimeRemaining = Math.max(0, Math.ceil((2.0 - t) + 45.0 + 3.0 + 5.0));
+      bajuriState = 'RED';
+      bajuriTimeRemaining = Math.max(0, Math.ceil(2.0 - t));
+    } else if (this.simpangLightPhase === 'BAJURI_GREEN') {
+      setiabudiState = 'RED';
+      setiabudiTimeRemaining = Math.max(0, Math.ceil((45.0 - t) + 3.0 + 5.0));
+      bajuriState = 'GREEN';
+      bajuriTimeRemaining = Math.max(0, Math.ceil(45.0 - t));
+    } else if (this.simpangLightPhase === 'BAJURI_YELLOW') {
+      setiabudiState = 'RED';
+      setiabudiTimeRemaining = Math.max(0, Math.ceil((3.0 - t) + 5.0));
+      bajuriState = 'YELLOW';
+      bajuriTimeRemaining = Math.max(0, Math.ceil(3.0 - t));
+    } else if (this.simpangLightPhase === 'ALL_RED_2') {
+      setiabudiState = 'RED';
+      setiabudiTimeRemaining = Math.max(0, Math.ceil(5.0 - t));
+      bajuriState = 'RED';
+      bajuriTimeRemaining = Math.max(0, Math.ceil((5.0 - t) + 80.0));
+    }
+
+    return {
+      phase: this.simpangLightPhase,
+      timer: this.simpangLightTimer,
+      setiabudi: {
+        state: setiabudiState,
+        countdown: setiabudiTimeRemaining,
+        greenDuration: 80,
+        redDuration: 55
+      },
+      bajuri: {
+        state: bajuriState,
+        countdown: bajuriTimeRemaining,
+        greenDuration: 45,
+        redDuration: 80
+      }
+    };
   }
 
   setDensity(density) {

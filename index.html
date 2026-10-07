@@ -62,6 +62,18 @@
         </div>
       </div>
 
+      <!-- 2 PILIHAN SISTEM: PAKE SISTEM VS TANPA SISTEM (TOP HEADER DOCK) -->
+      <div class="system-choice-dock" id="system-choice-dock" role="tablist" aria-label="Mode Sistem Penyeberangan">
+        <button class="sys-choice-btn active" id="btn-sys-after" data-sys="after" type="button" title="Simulasi Dengan Sistem Penyeberangan & Pagar Pembatas">
+          <i class="fa-solid fa-shield-halved"></i>
+          <span>Pake Sistem</span>
+        </button>
+        <button class="sys-choice-btn" id="btn-sys-before" data-sys="before" type="button" title="Simulasi Kondisi Awal: Tanpa Sistem & Tanpa Pagar (Menyebrang Sembarangan)">
+          <i class="fa-solid fa-triangle-exclamation"></i>
+          <span>Tanpa Sistem</span>
+        </button>
+      </div>
+
       <!-- COMPACT CAMERA SELECTOR DOCK (CENTER OF TOP NAVBAR) -->
       <nav class="camera-dock" aria-label="Mode Kamera">
         <div class="cam-button-group">
@@ -102,6 +114,11 @@
 
         <div class="header-vsep"></div>
 
+        <div class="status-pill simpang-apill-pill" id="simpang-apill-badge" title="Siklus Lampu Merah Simpang 3 Setiabudi – Terusan – Sersan Bajuri">
+          <i class="fa-solid fa-traffic-light" id="simpang-apill-icon" style="color: #10b981;"></i>
+          <span id="simpang-apill-text">Setiabudi 🟢 80s | Bajuri 🔴 80s</span>
+        </div>
+
         <div class="status-pill" id="zebra-status-badge">
           <span class="pulse-dot"></span>
           <span>Koridor Normal</span>
@@ -133,67 +150,193 @@
           </div>
         </div>
 
-        <!-- PILIHAN LAMPU / MODE UNTUK MENYEBRANG -->
-        <div class="control-group">
-          <div class="control-label-row">
-            <span>Pilihan Sinyal Menyebrang:</span>
-          </div>
-          <div class="crossing-mode-grid">
-            <button class="crossing-mode-btn active" data-mode="normal" id="mode-btn-normal" type="button">
-              <div class="mode-icon-circle green">
-                <i class="fa-solid fa-traffic-light"></i>
-              </div>
-              <div class="mode-meta">
-                <strong class="mode-title">Mode Normal</strong>
-                <span class="mode-sub">Lampu hijau 15s • Tombol terkunci 120s (2 mnt)</span>
-              </div>
-            </button>
-
-            <button class="crossing-mode-btn" data-mode="tunanetra" id="mode-btn-tunanetra" type="button">
-              <div class="mode-icon-circle amber">
-                <i class="fa-solid fa-volume-high"></i>
-              </div>
-              <div class="mode-meta">
-                <strong class="mode-title">Mode Tuna Netra</strong>
-                <span class="mode-sub">Panduan vokal & sinyal akustik bip pelican</span>
-              </div>
-            </button>
-          </div>
-        </div>
-
-        <!-- LIVE TRAFFIC LIGHT PREVIEW BOX -->
-        <div class="crossing-status-card" id="crossing-status-card">
-          <div class="signal-lamps-visual">
-            <div class="signal-lamp red active" id="lamp-red" title="Sinyal Kendaraan Berjalan (Pejalan Kaki Menunggu)">
-              <span class="lamp-glow"></span>
+        <!-- CONTAINER 1: VIEW PAKE SISTEM (PELICAN SIGNAL CONTROLS) -->
+        <div id="view-sys-after" class="sys-subview active">
+          <!-- PILIHAN LAMPU / MODE UNTUK MENYEBRANG -->
+          <div class="control-group">
+            <div class="control-label-row">
+              <span>Pilihan Sinyal Menyebrang:</span>
             </div>
-            <div class="signal-lamp green" id="lamp-green" title="Sinyal Hijau Pejalan Kaki Menyebrang">
-              <span class="lamp-glow"></span>
+            <div class="crossing-mode-grid">
+              <button class="crossing-mode-btn active" data-mode="normal" id="mode-btn-normal" type="button">
+                <div class="mode-icon-circle green">
+                  <i class="fa-solid fa-traffic-light"></i>
+                </div>
+                <div class="mode-meta">
+                  <strong class="mode-title">Mode Normal</strong>
+                  <span class="mode-sub">Lampu hijau 15s • Tombol terkunci 120s (2 mnt)</span>
+                </div>
+              </button>
+
+              <button class="crossing-mode-btn" data-mode="tunanetra" id="mode-btn-tunanetra" type="button">
+                <div class="mode-icon-circle amber">
+                  <i class="fa-solid fa-volume-high"></i>
+                </div>
+                <div class="mode-meta">
+                  <strong class="mode-title">Mode Tuna Netra</strong>
+                  <span class="mode-sub">Panduan vokal & sinyal akustik bip pelican</span>
+                </div>
+              </button>
             </div>
           </div>
-          <div class="signal-status-details">
-            <div class="signal-title" id="signal-title">Sinyal Kendaraan: Melaju Normal</div>
-            <div class="signal-subtitle" id="signal-subtitle">Tekan tombol di bawah untuk meminta lampu hijau menyebrang</div>
+
+          <!-- LIVE TRAFFIC LIGHT PREVIEW BOX -->
+          <div class="crossing-status-card" id="crossing-status-card">
+            <div class="signal-lamps-visual">
+              <div class="signal-lamp red active" id="lamp-red" title="Sinyal Kendaraan Berjalan (Pejalan Kaki Menunggu)">
+                <span class="lamp-glow"></span>
+              </div>
+              <div class="signal-lamp green" id="lamp-green" title="Sinyal Hijau Pejalan Kaki Menyebrang">
+                <span class="lamp-glow"></span>
+              </div>
+            </div>
+            <div class="signal-status-details">
+              <div class="signal-title" id="signal-title">Sinyal Kendaraan: Melaju Normal</div>
+              <div class="signal-subtitle" id="signal-subtitle">Tekan tombol di bawah untuk meminta lampu hijau menyebrang</div>
+            </div>
+            <div class="signal-countdown" id="signal-countdown" style="display: none;">15s</div>
           </div>
-          <div class="signal-countdown" id="signal-countdown" style="display: none;">15s</div>
+
+          <!-- LIVE AUDIO WAVE EQUALIZER FOR TUNA NETRA -->
+          <div class="audio-pulse-indicator" id="audio-pulse-indicator" style="display: none;">
+            <div class="sound-wave-anim">
+              <span></span><span></span><span></span><span></span><span></span>
+            </div>
+            <span class="audio-text"><i class="fa-solid fa-volume-high"></i> Panduan Suara & Akustik Tuna Netra Aktif</span>
+          </div>
+
+          <!-- PILIHAN SESI WAKTU SURVEI & BEBAN VOLUME -->
+          <div class="control-group">
+            <div class="control-label-row">
+              <span>Sesi Pengamatan & Volume Penyeberang:</span>
+            </div>
+            <div class="session-switch-grid">
+              <button class="session-btn" data-session="morning" id="btn-session-morning-after" type="button">
+                <i class="fa-solid fa-sun text-amber"></i>
+                <div class="session-btn-meta">
+                  <strong>Pagi (07:00-07:30)</strong>
+                  <span>Beban 279 Org • Rombongan 10 org</span>
+                </div>
+              </button>
+              <button class="session-btn active" data-session="evening" id="btn-session-evening-after" type="button">
+                <i class="fa-solid fa-cloud-sun text-orange"></i>
+                <div class="session-btn-meta">
+                  <strong>Sore (16:30-17:00)</strong>
+                  <span>Beban 169 Org • Rombongan 7 org</span>
+                </div>
+              </button>
+            </div>
+          </div>
+
+          <!-- KARTU ANTREAN & KONSOLIDASI PENYEBERANG -->
+          <div class="empirical-stats-box queue-consolidation-box">
+            <div class="stat-lead-title">
+              <i class="fa-solid fa-users text-cyan"></i>
+              <span>Konsolidasi Antrean Penyeberang Mupenas:</span>
+            </div>
+            <div class="queue-status-grid">
+              <div class="queue-stat-card">
+                <span class="queue-stat-label">Antrean di Trotoar</span>
+                <strong class="queue-stat-val text-amber" id="queue-waiting-counter">7 Orang</strong>
+              </div>
+              <div class="queue-stat-card">
+                <span class="queue-stat-label">Rombongan per Siklus</span>
+                <strong class="queue-stat-val text-cyan" id="queue-platoon-size">7 Orang</strong>
+              </div>
+              <div class="queue-stat-card">
+                <span class="queue-stat-label">Total Tertib Menyeberang</span>
+                <strong class="queue-stat-val text-green" id="queue-crossed-counter">0 Orang</strong>
+              </div>
+            </div>
+            <div class="survey-note">
+              <i class="fa-solid fa-shield-halved text-green"></i> <strong>100% Tertib Terpusat</strong> di Pelican Mupenas (Eks-Ilegal + Mupenas bergabung jadi satu antrean)
+            </div>
+          </div>
+
+          <!-- TOMBOL MINTA MENYEBRANG & RESET LOCKDOWN -->
+          <div class="control-action-row">
+            <button class="btn-primary-action btn-cross-pelican" id="btn-zebra-cross">
+              <i class="fa-solid fa-hand"></i> Minta Menyebrang (Tekan Tombol)
+            </button>
+            <button class="btn-cancel-lockdown" id="btn-cancel-lockdown" style="display: none;" title="Batalkan / Buka Kunci Lockdown Lebih Awal">
+              <i class="fa-solid fa-rotate-left"></i> Reset Lockdown (Buka Kunci Tombol)
+            </button>
+          </div>
         </div>
 
-        <!-- LIVE AUDIO WAVE EQUALIZER FOR TUNA NETRA -->
-        <div class="audio-pulse-indicator" id="audio-pulse-indicator" style="display: none;">
-          <div class="sound-wave-anim">
-            <span></span><span></span><span></span><span></span><span></span>
+        <!-- CONTAINER 2: VIEW TANPA SISTEM (KONDISI AWAL & DATA EMPIRIS) -->
+        <div id="view-sys-before" class="sys-subview" style="display: none;">
+          <!-- PILIHAN SESI WAKTU SURVEI -->
+          <div class="control-group">
+            <div class="control-label-row">
+              <span>Pilih Sesi Pengamatan Lapangan:</span>
+            </div>
+            <div class="session-switch-grid">
+              <button class="session-btn" data-session="morning" id="btn-session-morning" type="button">
+                <i class="fa-solid fa-sun text-amber"></i>
+                <div class="session-btn-meta">
+                  <strong>Pagi (07:00-07:30)</strong>
+                  <span>84 Mupenas • 195 Ilegal</span>
+                </div>
+              </button>
+              <button class="session-btn active" data-session="evening" id="btn-session-evening" type="button">
+                <i class="fa-solid fa-cloud-sun text-orange"></i>
+                <div class="session-btn-meta">
+                  <strong>Sore (16:30-17:00)</strong>
+                  <span>53 Mupenas • 116 Ilegal</span>
+                </div>
+              </button>
+            </div>
           </div>
-          <span class="audio-text"><i class="fa-solid fa-volume-high"></i> Panduan Suara & Akustik Tuna Netra Aktif</span>
-        </div>
 
-        <!-- TOMBOL MINTA MENYEBRANG & RESET LOCKDOWN -->
-        <div class="control-action-row">
-          <button class="btn-primary-action btn-cross-pelican" id="btn-zebra-cross">
-            <i class="fa-solid fa-hand"></i> Minta Menyebrang (Tekan Tombol)
-          </button>
-          <button class="btn-cancel-lockdown" id="btn-cancel-lockdown" style="display: none;" title="Batalkan / Buka Kunci Lockdown Lebih Awal">
-            <i class="fa-solid fa-rotate-left"></i> Reset Lockdown (Buka Kunci Tombol)
-          </button>
+          <!-- EMPIRICAL DATA RATIO CARD -->
+          <div class="empirical-stats-box">
+            <div class="stat-row-highlight danger">
+              <div class="stat-lead">
+                <i class="fa-solid fa-person-walking-dashed-line-arrow-right"></i>
+                <span>Penyeberang Ilegal (Sembarangan):</span>
+              </div>
+              <strong class="stat-number red" id="stat-illegal-count">116 Orang (68.6%)</strong>
+            </div>
+            <div class="stat-row-highlight safe">
+              <div class="stat-lead">
+                <i class="fa-solid fa-person-walking"></i>
+                <span>Menyeberang di Zebra Cross:</span>
+              </div>
+              <strong class="stat-number green" id="stat-mupenas-count">53 Orang (31.4%)</strong>
+            </div>
+            <div class="survey-note">
+              <i class="fa-solid fa-circle-info"></i> Data survei empiris 30 menit tanpa pagar pembatas jalan
+            </div>
+          </div>
+
+          <!-- REAL-TIME IMPACT TELEMETRY -->
+          <div class="realtime-impact-card">
+            <div class="impact-title">
+              <i class="fa-solid fa-triangle-exclamation text-amber"></i>
+              <span>Dampak Lapangan Real-time:</span>
+            </div>
+            <div class="impact-grid">
+              <div class="impact-item">
+                <span class="impact-label">Konflik / Rem Mendadak</span>
+                <span class="impact-val text-red" id="live-conflict-counter">0</span>
+              </div>
+              <div class="impact-item">
+                <span class="impact-label">Penyeberang Ilegal Aktif</span>
+                <span class="impact-val text-blue" id="live-jaywalker-counter">0</span>
+              </div>
+            </div>
+            <div class="impact-desc">
+              ⚠️ Kendaraan terpaksa rem mendadak & membunyikan klakson saat pejalan kaki memotong jalan sembarangan.
+            </div>
+          </div>
+
+          <!-- TOMBOL BUKA LAPORAN KOMPARASI LENGKAP -->
+          <div class="control-action-row">
+            <button class="btn-primary-action btn-open-report" id="btn-open-report" type="button">
+              <i class="fa-solid fa-chart-pie"></i> Buka Laporan Komparasi Lengkap
+            </button>
+          </div>
         </div>
       </section>
 
@@ -241,6 +384,99 @@
       <i class="fa-solid fa-keyboard"></i> WASD / Tombol Panah: Gerak Kamera • <strong>H</strong>: Hide/Show Kontrol • Klik Kendaraan: Telemetri
     </div>
 
+  </div>
+
+  <!-- MODAL LAPORAN KOMPARASI LENGKAP -->
+  <div class="report-modal-backdrop" id="modal-comparison-report" style="display: none;">
+    <div class="report-modal-dialog glass-panel">
+      <div class="modal-header">
+        <div class="modal-title-group">
+          <div class="modal-icon-pill">
+            <i class="fa-solid fa-scale-unbalanced-flip"></i>
+          </div>
+          <div>
+            <h3>Laporan Komparasi: Sebelum vs Sesudah Sistem Penyeberangan</h3>
+            <p>Studi Lapangan Simpang Jl. Dr. Setiabudi – Jl. Perkasa (Mupenas), Bandung</p>
+          </div>
+        </div>
+        <button class="btn-modal-close" id="btn-close-report" title="Tutup Laporan">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+
+      <div class="modal-body">
+        <!-- SURVEY DATA COMPARISON TILES -->
+        <div class="report-summary-grid">
+          <div class="summary-tile danger">
+            <span class="tile-label"><i class="fa-solid fa-triangle-exclamation"></i> Kondisi Awal (Tanpa Sistem & Tanpa Pagar)</span>
+            <div class="tile-main-stat">~70% Penyeberang Ilegal</div>
+            <p>Pagi: 195 orang ilegal (69.9%) | Sore: 116 orang ilegal (68.6%). Pejalan kaki melintas di sembarang titik jalan tanpa perlindungan, memicu pengereman mendadak.</p>
+          </div>
+          <div class="summary-tile success">
+            <span class="tile-label"><i class="fa-solid fa-shield-halved"></i> Kondisi Sesudah (Pake Sistem & Pagar Ivy)</span>
+            <div class="tile-main-stat">100% Tertib Zebra Cross</div>
+            <p>Pagar pembatas trotoar 1.8m mengeliminasi crossing ilegal, mengalirkan seluruh pejalan kaki ke pelican crossing berlampu.</p>
+          </div>
+        </div>
+
+        <!-- DETAILED MATRIX TABLE -->
+        <div class="table-responsive">
+          <table class="comparison-table">
+            <thead>
+              <tr>
+                <th>Parameter Evaluasi</th>
+                <th>⚠️ Tanpa Sistem (Sebelum)</th>
+                <th>🛡️ Pake Sistem (Sesudah)</th>
+                <th>Dampak / Peningkatan</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>Lokasi Menyeberang</strong></td>
+                <td>Tersebar bebas sepanjang koridor Setiabudi</td>
+                <td>Terkanalisasi 100% pada Zebra Cross Jl. Perkasa</td>
+                <td><span class="badge-good">Penertiban Total</span></td>
+              </tr>
+              <tr>
+                <td><strong>Konflik & Pengereman Mendadak</strong></td>
+                <td>Sangat tinggi, memicu pengereman darurat mendadak</td>
+                <td>0 konflik mendadak, kendaraan berhenti teratur di stop line</td>
+                <td><span class="badge-good">Kecelakaan Tereliminasi</span></td>
+              </tr>
+              <tr>
+                <td><strong>Waktu Tundaan Kendaraan (Delay)</strong></td>
+                <td>12.4 – 14.8 detik/kendaraan (tundaan sporadis & macet kejut)</td>
+                <td>2.8 – 3.2 detik/kendaraan (terkoordinasi green wave Simpang 3)</td>
+                <td><span class="badge-good">Turun ~78%</span></td>
+              </tr>
+              <tr>
+                <td><strong>Kepastian Waktu Tunggu Pejalan</strong></td>
+                <td>Tidak pasti (menunggu celah celah kendaraan ngebut)</td>
+                <td>Pasti: Lampu hijau 6s dengan jeda lockdown teratur 120s</td>
+                <td><span class="badge-good">Jaminan Keamanan</span></td>
+              </tr>
+              <tr>
+                <td><strong>Akses Disabilitas & Tuna Netra</strong></td>
+                <td>Tidak ada sinyal, sangat berisiko bagi penyandang disabilitas</td>
+                <td>Sinyal akustik bip pelican & panduan vokal ramah tuna netra</td>
+                <td><span class="badge-good">Inklusif & Aman</span></td>
+              </tr>
+              <tr>
+                <td><strong>Estetika & Lingkungan Trotoar</strong></td>
+                <td>Trotoar terbuka, rawan diserobot kendaraan</td>
+                <td>Pagar hijau tanaman Hedera Helix (Ivy) asri & rimbun</td>
+                <td><span class="badge-good">Estetik & Berkelanjutan</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <span class="modal-footer-caption"><i class="fa-solid fa-graduation-cap"></i> Program Studi Pendidikan Fisika • FPMIPA • Universitas Pendidikan Indonesia</span>
+        <button class="btn-primary-action btn-modal-dismiss" id="btn-dismiss-report">Mengerti & Tutup</button>
+      </div>
+    </div>
   </div>
 
   <!-- Main ES Module Script -->

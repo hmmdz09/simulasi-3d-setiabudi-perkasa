@@ -443,12 +443,36 @@ export class TrafficSimulationApp {
     const dt = Math.min(0.1, this.clock.getDelta());
     const time = this.clock.getElapsedTime();
 
-    // Update systems
-    this.environment.update(time, dt);
-    this.trafficSystem.update(dt, time);
-    this.pedestrianSystem.update(dt, time);
-    this.hud.update(dt);
-    this.updateCamera(dt, time);
+    // Update systems with safeguards so canvas render loop never halts
+    try {
+      this.environment.update(time, dt);
+    } catch (e) {
+      console.error('[Environment Error]', e);
+    }
+
+    try {
+      this.trafficSystem.update(dt, time);
+    } catch (e) {
+      console.error('[TrafficSystem Error]', e);
+    }
+
+    try {
+      this.pedestrianSystem.update(dt, time);
+    } catch (e) {
+      console.error('[PedestrianSystem Error]', e);
+    }
+
+    try {
+      this.hud.update(dt);
+    } catch (e) {
+      console.error('[HUD Error]', e);
+    }
+
+    try {
+      this.updateCamera(dt, time);
+    } catch (e) {
+      console.error('[Camera Error]', e);
+    }
 
     this.renderer.render(this.scene, this.camera);
   }

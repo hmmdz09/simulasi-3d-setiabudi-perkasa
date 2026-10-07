@@ -173,13 +173,29 @@ export class AcousticSignalAudio {
         osc.frequency.setValueAtTime(392.00, now + 0.12);
 
         gain.gain.setValueAtTime(0.22, now);
-        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
-
         osc.connect(gain);
         gain.connect(this.audioCtx.destination);
         osc.start(now);
         osc.stop(now + 0.35);
       } catch (e) {}
     }
+  }
+
+  playHonk() {
+    this.init();
+    if (!this.audioCtx || this.isMuted) return;
+    try {
+      const now = this.audioCtx.currentTime;
+      const osc = this.audioCtx.createOscillator();
+      const gain = this.audioCtx.createGain();
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(420, now);
+      gain.gain.setValueAtTime(0.18, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.22);
+      osc.connect(gain);
+      gain.connect(this.audioCtx.destination);
+      osc.start(now);
+      osc.stop(now + 0.22);
+    } catch(e) {}
   }
 }
