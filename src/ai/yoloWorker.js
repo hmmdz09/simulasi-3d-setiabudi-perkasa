@@ -1,11 +1,15 @@
 import * as ort from 'onnxruntime-web';
 
 let session = null;
+let inputName = 'pixel_values';
+let isYolo26 = true;
 let offCanvas = null;
 let offCtx = null;
 let floatArr = new Float32Array(3 * 640 * 640);
 const inv255 = 1.0 / 255.0;
 const numPixels = 640 * 640;
+
+const sigmoid = (x) => 1.0 / (1.0 + Math.exp(-x));
 
 self.onmessage = async (e) => {
   const data = e.data;
@@ -21,12 +25,21 @@ self.onmessage = async (e) => {
         executionProviders: ['wasm']
       });
 
+      inputName = session.inputNames[0] || 'pixel_values';
+      const outputNames = session.outputNames || [];
+      isYolo26 = outputNames.includes('logits') && outputNames.includes('pred_boxes');
+
       offCanvas = new OffscreenCanvas(640, 640);
       offCtx = offCanvas.getContext('2d', { willReadFrequently: true });
 
-      self.postMessage({ type: 'INIT_SUCCESS' });
+      self.postMessage({
+        type: 'INIT_SUCCESS',
+        isYolo26,
+        modelName: isYolo26 ? 'YOLOv26' : 'YOLOv8',
+        modelUrl: data.modelUrl
+      });
     } catch (err) {
-      self.postMessage({ type: 'INIT_ERROR', error: err.message });
+      self.postMessage({ type: 'INIT_ERROR', error: err.message, modelUrl: data.modelUrl });
     }
   } else if (data.type === 'DETECT') {
     if (!session || !offCtx) {
@@ -54,7 +67,7 @@ self.onmessage = async (e) => {
 
       const imgData = offCtx.getImageData(0, 0, 640, 640).data;
 
-      // 2. Pre-process to pre-allocated Float32Array
+      // 2. Pre-process to pre-allocated Float32Array [1, 3, 640, 640]
       for (let i = 0; i < numPixels; i++) {
         const i4 = i * 4;
         floatArr[i] = imgData[i4] * inv255;
@@ -62,75 +75,150 @@ self.onmessage = async (e) => {
         floatArr[2 * numPixels + i] = imgData[i4 + 2] * inv255;
       }
 
-      // 3. Run YOLOv8 ONNX inference on background thread
+      // 3. Run Inference on background thread with dynamic input name
       const inputTensor = new ort.Tensor('float32', floatArr, [1, 3, 640, 640]);
-      const results = await session.run({ images: inputTensor });
-      const outputData = results.output0.data;
+      const feeds = {};
+      feeds[inputName] = inputTensor;
+      const results = await session.run(feeds);
 
-      // 4. Extract candidates with ultra-sensitive motorcycle detection
+      // 4. Candidate extraction with ultra-sensitive motorcycle detection
       const motoThreshold = Math.max(0.05, confThreshold * 0.40);
       const carThreshold = Math.max(0.15, confThreshold * 0.80);
-
       const candidates = [];
-      const numCandidates = 8400;
 
-      for (let c = 0; c < numCandidates; c++) {
-        const personScore = outputData[4 * numCandidates + c];
-        const bicycleScore = outputData[5 * numCandidates + c];
-        const carScore = outputData[6 * numCandidates + c];
-        const motoScore = outputData[7 * numCandidates + c];
-        const busScore = outputData[9 * numCandidates + c];
-        const truckScore = outputData[11 * numCandidates + c];
+      if (isYolo26 && results.logits && results.pred_boxes) {
+        // ===================================================================
+        // ULTRALYTICS YOLOv26: NMS-FREE END-TO-END DECODER (300 DUAL-HEAD QUERIES)
+        // ===================================================================
+        const logits = results.logits.data;
+        const predBoxes = results.pred_boxes.data;
 
-        const autoScore = Math.max(carScore, busScore, truckScore);
-        const twoWheelerScore = Math.max(motoScore, bicycleScore);
+        for (let i = 0; i < 300; i++) {
+          const off = i * 80;
+          const personScore = sigmoid(logits[off + 0]);
+          const bicycleScore = sigmoid(logits[off + 1]);
+          const carScore = sigmoid(logits[off + 2]);
+          const motoScore = sigmoid(logits[off + 3]);
+          const busScore = sigmoid(logits[off + 5]);
+          const truckScore = sigmoid(logits[off + 7]);
 
-        // Sensitive rider fusion for Indonesian traffic CCTV
-        const riderFusion = (personScore >= 0.10 && (twoWheelerScore >= 0.03 || personScore >= 0.18));
-        const effectiveMotoScore = riderFusion
-          ? Math.max(twoWheelerScore, personScore * 0.90)
-          : twoWheelerScore;
+          const autoScore = Math.max(carScore, busScore, truckScore);
+          const twoWheelerScore = Math.max(motoScore, bicycleScore);
 
-        const w_letter = outputData[2 * numCandidates + c];
-        const h_letter = outputData[3 * numCandidates + c];
-        const aspectRatio = w_letter / Math.max(1, h_letter);
+          // Sensitive rider fusion for Indonesian traffic CCTV
+          const riderFusion = (personScore >= 0.10 && (twoWheelerScore >= 0.03 || personScore >= 0.18));
+          const effectiveMotoScore = riderFusion
+            ? Math.max(twoWheelerScore, personScore * 0.90)
+            : twoWheelerScore;
 
-        let cls = null;
-        let score = 0;
+          const boxOff = i * 4;
+          const cx_norm = predBoxes[boxOff + 0];
+          const cy_norm = predBoxes[boxOff + 1];
+          const w_norm = predBoxes[boxOff + 2];
+          const h_norm = predBoxes[boxOff + 3];
 
-        if (effectiveMotoScore >= motoThreshold && (effectiveMotoScore >= autoScore * 0.80 || aspectRatio < 0.72)) {
-          cls = 'motorcycle';
-          score = effectiveMotoScore;
-        } else if (autoScore >= carThreshold && (autoScore > effectiveMotoScore || aspectRatio >= 0.72)) {
-          cls = 'car';
-          score = autoScore;
-        } else if (effectiveMotoScore >= motoThreshold) {
-          cls = 'motorcycle';
-          score = effectiveMotoScore;
-        } else if (autoScore >= carThreshold) {
-          cls = 'car';
-          score = autoScore;
+          const aspectRatio = w_norm / Math.max(0.001, h_norm);
+
+          let cls = null;
+          let score = 0;
+
+          if (effectiveMotoScore >= motoThreshold && (effectiveMotoScore >= autoScore * 0.80 || aspectRatio < 0.72)) {
+            cls = 'motorcycle';
+            score = effectiveMotoScore;
+          } else if (autoScore >= carThreshold && (autoScore > effectiveMotoScore || aspectRatio >= 0.72)) {
+            cls = 'car';
+            score = autoScore;
+          } else if (effectiveMotoScore >= motoThreshold) {
+            cls = 'motorcycle';
+            score = effectiveMotoScore;
+          } else if (autoScore >= carThreshold) {
+            cls = 'car';
+            score = autoScore;
+          }
+
+          if (cls) {
+            const cx_letter = cx_norm * 640;
+            const cy_letter = cy_norm * 640;
+            const w_letter = w_norm * 640;
+            const h_letter = h_norm * 640;
+
+            const realX = Math.max(0, ((cx_letter - w_letter / 2) - padX) / scale);
+            const realY = Math.max(0, ((cy_letter - h_letter / 2) - padY) / scale);
+            const realW = Math.min(vidW - realX, w_letter / scale);
+            const heightMultiplier = (cls === 'motorcycle' && riderFusion) ? 1.35 : 1.0;
+            const realH = Math.min(vidH - realY, (h_letter * heightMultiplier) / scale);
+
+            candidates.push({
+              bbox: [realX, realY, realW, realH],
+              score: score,
+              class: cls
+            });
+          }
         }
+      } else if (results.output0) {
+        // ===================================================================
+        // ULTRALYTICS YOLOv8 FALLBACK: GRID-BASED RAW ANCHOR DECODER (8400 COLS)
+        // ===================================================================
+        const outputData = results.output0.data;
+        const numCandidates = 8400;
 
-        if (cls) {
-          const cx_letter = outputData[0 * numCandidates + c];
-          const cy_letter = outputData[1 * numCandidates + c];
+        for (let c = 0; c < numCandidates; c++) {
+          const personScore = outputData[4 * numCandidates + c];
+          const bicycleScore = outputData[5 * numCandidates + c];
+          const carScore = outputData[6 * numCandidates + c];
+          const motoScore = outputData[7 * numCandidates + c];
+          const busScore = outputData[9 * numCandidates + c];
+          const truckScore = outputData[11 * numCandidates + c];
 
-          const realX = Math.max(0, ((cx_letter - w_letter / 2) - padX) / scale);
-          const realY = Math.max(0, ((cy_letter - h_letter / 2) - padY) / scale);
-          const realW = Math.min(vidW - realX, w_letter / scale);
-          const heightMultiplier = (cls === 'motorcycle' && riderFusion) ? 1.35 : 1.0;
-          const realH = Math.min(vidH - realY, (h_letter * heightMultiplier) / scale);
+          const autoScore = Math.max(carScore, busScore, truckScore);
+          const twoWheelerScore = Math.max(motoScore, bicycleScore);
 
-          candidates.push({
-            bbox: [realX, realY, realW, realH],
-            score: score,
-            class: cls
-          });
+          const riderFusion = (personScore >= 0.10 && (twoWheelerScore >= 0.03 || personScore >= 0.18));
+          const effectiveMotoScore = riderFusion
+            ? Math.max(twoWheelerScore, personScore * 0.90)
+            : twoWheelerScore;
+
+          const w_letter = outputData[2 * numCandidates + c];
+          const h_letter = outputData[3 * numCandidates + c];
+          const aspectRatio = w_letter / Math.max(1, h_letter);
+
+          let cls = null;
+          let score = 0;
+
+          if (effectiveMotoScore >= motoThreshold && (effectiveMotoScore >= autoScore * 0.80 || aspectRatio < 0.72)) {
+            cls = 'motorcycle';
+            score = effectiveMotoScore;
+          } else if (autoScore >= carThreshold && (autoScore > effectiveMotoScore || aspectRatio >= 0.72)) {
+            cls = 'car';
+            score = autoScore;
+          } else if (effectiveMotoScore >= motoThreshold) {
+            cls = 'motorcycle';
+            score = effectiveMotoScore;
+          } else if (autoScore >= carThreshold) {
+            cls = 'car';
+            score = autoScore;
+          }
+
+          if (cls) {
+            const cx_letter = outputData[0 * numCandidates + c];
+            const cy_letter = outputData[1 * numCandidates + c];
+
+            const realX = Math.max(0, ((cx_letter - w_letter / 2) - padX) / scale);
+            const realY = Math.max(0, ((cy_letter - h_letter / 2) - padY) / scale);
+            const realW = Math.min(vidW - realX, w_letter / scale);
+            const heightMultiplier = (cls === 'motorcycle' && riderFusion) ? 1.35 : 1.0;
+            const realH = Math.min(vidH - realY, (h_letter * heightMultiplier) / scale);
+
+            candidates.push({
+              bbox: [realX, realY, realW, realH],
+              score: score,
+              class: cls
+            });
+          }
         }
       }
 
-      // 5. NMS with cross-class duplicate suppression
+      // 5. Clean Bounding Box Duplicate Suppression
       candidates.sort((a, b) => b.score - a.score);
       const selected = [];
 
@@ -164,7 +252,8 @@ self.onmessage = async (e) => {
         type: 'DETECTIONS',
         detections: selected,
         captureMeta,
-        latency
+        latency,
+        isYolo26
       });
     } catch (err) {
       self.postMessage({ type: 'DETECT_ERROR', error: err.message, captureMeta });
