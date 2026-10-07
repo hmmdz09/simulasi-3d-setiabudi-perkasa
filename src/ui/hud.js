@@ -93,6 +93,13 @@ export class HUDManager {
         this.toggleControlDeck();
       });
     }
+
+    const cardCloseBtn = document.getElementById('btn-card-close');
+    if (cardCloseBtn) {
+      cardCloseBtn.addEventListener('click', () => {
+        this.toggleControlDeck(true);
+      });
+    }
   }
 
   toggleControlDeck(forceState = null) {
@@ -267,7 +274,7 @@ export class HUDManager {
 
       if (badge) {
         badge.className = 'status-pill';
-        badge.innerHTML = '<span class="pulse-dot"></span><span>Sinyal Koridor Normal</span>';
+        badge.innerHTML = '<span class="pulse-dot"></span><span>Koridor Normal</span>';
       }
 
       if (btn) {

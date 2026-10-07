@@ -33,77 +33,85 @@
   <!-- FLOATING GLASSMORPHISM HUD OVERLAY -->
   <div class="hud-overlay">
     
-    <!-- TOP HEADER BAR -->
+    <!-- TOP HEADER BAR (UNIFIED ZERO-COLLISION NAVBAR) -->
     <header class="top-header glass-panel">
-      <div class="header-branding">
-        <div class="brand-icon">
-          <i class="fa-solid fa-traffic-light"></i>
-        </div>
-        <div class="brand-text">
-          <div class="project-tag">
-            <span class="corridor-badge"><i class="fa-solid fa-graduation-cap"></i> Kawasan Simpang UPI</span>
-            <span>Simpang Sersan Bajuri • Sersan Urip • Terusan Setiabudi • Jl. Perkasa • Jl. Moh. Yamin</span>
+      <div class="header-left">
+        <!-- Toggle button integrated directly inside the top header -->
+        <button class="deck-toggle-btn" id="btn-toggle-deck" title="Sembunyikan / Tampilkan Panel Kontrol (Shortcut: H)">
+          <i class="fa-solid fa-chevron-left" id="icon-toggle-deck"></i>
+          <span id="text-toggle-deck">Panel (H)</span>
+        </button>
+
+        <div class="header-vsep"></div>
+
+        <div class="header-branding">
+          <!-- Academic Identity Logos (UPI, FPMIPA, PENDIKFIS) -->
+          <div class="academic-logos" title="Pendidikan Fisika (PENDIKFIS) • FPMIPA • Universitas Pendidikan Indonesia">
+            <img src="/logo/logo-upi.png" alt="Logo UPI" class="academic-logo-img logo-upi" title="Universitas Pendidikan Indonesia (The Education University)">
+            <img src="/logo/logo-fpmipa.png" alt="Logo FPMIPA" class="academic-logo-img logo-fpmipa" title="FPMIPA UPI">
+            <img src="/logo/logo-pendikfis.png" alt="Logo PENDIKFIS" class="academic-logo-img logo-pendikfis" title="Pendidikan Fisika Universitas Pendidikan Indonesia">
           </div>
-          <h1>Simulasi 3D Simpang Setiabudi – Sersan Bajuri – Sersan Urip (Kawasan UPI)</h1>
+
+          <div class="brand-text">
+            <div class="project-tag">
+              <span class="course-badge" title="Mata Kuliah: MSTR Untuk Pembangunan Berkelanjutan"><i class="fa-solid fa-graduation-cap"></i> MSTR UNTUK PEMBANGUNAN BERKELANJUTAN</span>
+              <span class="corridor-roads">PENDIKFIS • FPMIPA UPI</span>
+            </div>
+            <h1>Simulasi 3D Simpang Setiabudi – Jl. Perkasa</h1>
+          </div>
         </div>
       </div>
 
+      <!-- COMPACT CAMERA SELECTOR DOCK (CENTER OF TOP NAVBAR) -->
+      <nav class="camera-dock" aria-label="Mode Kamera">
+        <div class="cam-button-group">
+          <button class="cam-btn active" data-cam="drone" id="btn-cam-drone" title="Drone View (Isometrik Luas)">
+            <i class="fa-solid fa-helicopter"></i>
+          </button>
+          <button class="cam-btn" data-cam="orbit" id="btn-cam-orbit" title="Free Orbit (Jelajah 360° Bebas)">
+            <i class="fa-solid fa-globe"></i>
+          </button>
+          <button class="cam-btn" data-cam="chase" id="btn-cam-chase" title="Chase Cam (Ikuti Kendaraan)">
+            <i class="fa-solid fa-car-side"></i>
+          </button>
+          <button class="cam-btn" data-cam="zebra" id="btn-cam-zebra" title="Zebra Cross (Trotoar Penyeberangan)">
+            <i class="fa-solid fa-person-walking"></i>
+          </button>
+          <button class="cam-btn" data-cam="upi" id="btn-cam-upi" title="Gerbang Kampus UPI">
+            <i class="fa-solid fa-landmark"></i>
+          </button>
+          <button class="cam-btn" data-cam="simpang" id="btn-cam-simpang" title="Simpang 3 Sersan Bajuri">
+            <i class="fa-solid fa-traffic-light"></i>
+          </button>
+        </div>
+      </nav>
+
       <div class="header-actions">
+        <!-- Quick Day/Sunset/Night Toggle in Header -->
+        <div class="dock-lighting-group" title="Waktu & Pencahayaan">
+          <button class="light-btn active" data-mode="day" title="Siang Terang">
+            <i class="fa-solid fa-sun"></i>
+          </button>
+          <button class="light-btn" data-mode="sunset" title="Sore / Golden Hour">
+            <i class="fa-solid fa-cloud-sun"></i>
+          </button>
+          <button class="light-btn" data-mode="night" title="Malam Lampu Kota">
+            <i class="fa-solid fa-moon"></i>
+          </button>
+        </div>
+
+        <div class="header-vsep"></div>
+
         <div class="status-pill" id="zebra-status-badge">
           <span class="pulse-dot"></span>
-          <span>Sinyal Koridor Normal</span>
+          <span>Koridor Normal</span>
         </div>
+
         <div class="time-badge" id="hud-clock">
           <i class="fa-regular fa-clock"></i> <span>07:45 WIB</span>
         </div>
       </div>
     </header>
-
-    <!-- TOP CAMERA SELECTOR DOCK -->
-    <nav class="camera-dock glass-panel" aria-label="Mode Kamera">
-      <span class="dock-label"><i class="fa-solid fa-video"></i> Kamera:</span>
-      <div class="cam-button-group">
-        <button class="cam-btn active" data-cam="drone" id="btn-cam-drone" title="Tampak Atas Isometrik Luas (Dapat Dijelajah Bebas)">
-          <i class="fa-solid fa-helicopter"></i> Drone View
-        </button>
-        <button class="cam-btn" data-cam="orbit" id="btn-cam-orbit" title="Orbit Bebas 360 Derajat (Dapat Dijelajah Bebas)">
-          <i class="fa-solid fa-globe"></i> Free Orbit
-        </button>
-        <button class="cam-btn" data-cam="chase" id="btn-cam-chase" title="Kamera Kejar Mengikuti Kendaraan">
-          <i class="fa-solid fa-car-side"></i> Chase Cam
-        </button>
-        <button class="cam-btn" data-cam="zebra" id="btn-cam-zebra" title="Sudut Pandang Trotoar Zebra Cross">
-          <i class="fa-solid fa-person-walking"></i> Zebra Cross
-        </button>
-        <button class="cam-btn" data-cam="upi" id="btn-cam-upi" title="Sudut Pandang Gerbang Kawasan Kampus UPI">
-          <i class="fa-solid fa-landmark"></i> Gerbang UPI
-        </button>
-        <button class="cam-btn" data-cam="simpang" id="btn-cam-simpang" title="Sudut Pandang Lampu Merah Simpang 3 Sersan Bajuri">
-          <i class="fa-solid fa-traffic-light"></i> Simpang Bajuri
-        </button>
-      </div>
-
-      <div class="dock-divider"></div>
-
-      <!-- Quick Day/Sunset/Night Toggle -->
-      <div class="dock-lighting-group" title="Waktu & Pencahayaan">
-        <button class="light-btn active" data-mode="day" title="Siang Terang">
-          <i class="fa-solid fa-sun"></i>
-        </button>
-        <button class="light-btn" data-mode="sunset" title="Sore / Golden Hour">
-          <i class="fa-solid fa-cloud-sun"></i>
-        </button>
-        <button class="light-btn" data-mode="night" title="Malam Lampu Kota">
-          <i class="fa-solid fa-moon"></i>
-        </button>
-      </div>
-    </nav>
-
-    <!-- TOGGLE BUTTON TO HIDE / SHOW CONTROL DECK -->
-    <button class="deck-toggle-btn glass-panel" id="btn-toggle-deck" title="Sembunyikan / Tampilkan Panel Kontrol (Shortcut: H)">
-      <i class="fa-solid fa-chevron-left" id="icon-toggle-deck"></i>
-      <span id="text-toggle-deck">Sembunyikan Panel (H)</span>
-    </button>
 
     <!-- MAIN INTERACTIVE SIDE DECK -->
     <aside class="control-deck" id="control-deck">
@@ -111,8 +119,18 @@
       <!-- CARD 1: KONTROL PENYEBERANGAN (SIMULASI ZEBRA CROSS) -->
       <section class="deck-card glass-panel" id="card-crossing-control">
         <div class="card-header">
-          <h2><i class="fa-solid fa-person-walking"></i> Kontrol Penyeberangan</h2>
-          <span class="crossing-active-chip" id="chip-mode-status"><i class="fa-solid fa-traffic-light"></i> Normal</span>
+          <div class="card-title-group">
+            <div class="card-icon-pill">
+              <i class="fa-solid fa-person-walking"></i>
+            </div>
+            <h2>Kontrol Penyeberangan</h2>
+          </div>
+          <div class="card-header-actions">
+            <span class="crossing-active-chip chip-green" id="chip-mode-status"><i class="fa-solid fa-traffic-light"></i> Normal</span>
+            <button class="btn-card-close" id="btn-card-close" title="Tutup Panel (Shortcut: H)">
+              <i class="fa-solid fa-xmark"></i>
+            </button>
+          </div>
         </div>
 
         <!-- PILIHAN LAMPU / MODE UNTUK MENYEBRANG -->
@@ -127,7 +145,7 @@
               </div>
               <div class="mode-meta">
                 <strong class="mode-title">Mode Normal</strong>
-                <span class="mode-sub">Lampu hijau 15 detik, tombol menyeberang terkunci 2 menit (120s)</span>
+                <span class="mode-sub">Lampu hijau 15s • Tombol terkunci 120s (2 mnt)</span>
               </div>
             </button>
 
@@ -137,7 +155,7 @@
               </div>
               <div class="mode-meta">
                 <strong class="mode-title">Mode Tuna Netra</strong>
-                <span class="mode-sub">Suara vokal: "Penyeberangan diterima, silakan menyeberang" & bip ritmis</span>
+                <span class="mode-sub">Panduan vokal & sinyal akustik bip pelican</span>
               </div>
             </button>
           </div>
@@ -180,6 +198,7 @@
       </section>
 
     </aside>
+
 
     <!-- VEHICLE TELEMETRY HUD (Active on Chase / Vehicle Click) -->
     <div class="telemetry-card glass-panel" id="telemetry-panel">
