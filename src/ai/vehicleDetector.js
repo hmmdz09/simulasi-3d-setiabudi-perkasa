@@ -203,7 +203,7 @@ export class VehicleDetector {
 
         const timer = setTimeout(() => {
           reject(new Error('Inisialisasi Web Worker timeout'));
-        }, 15000);
+        }, 60000);
 
         this.worker.onmessage = (e) => {
           const data = e.data;
