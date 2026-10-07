@@ -528,32 +528,71 @@
             <div class="ai-viewport-top-hud">
               <div class="ai-hud-chip"><i class="fa-solid fa-gauge-high"></i> <span id="ai-fps-counter">0 FPS</span></div>
               <div class="ai-hud-chip"><i class="fa-solid fa-microchip"></i> <span id="ai-lat-counter">0 ms</span></div>
-              <div class="ai-hud-chip chip-cyan"><i class="fa-solid fa-eye"></i> <span id="ai-onscreen-counter">0</span> di Layar</div>
+              <div class="ai-hud-chip chip-cyan"><i class="fa-solid fa-eye"></i> <span id="ai-onscreen-counter">0</span> Terdeteksi</div>
+              <div class="ai-hud-chip chip-file" id="ai-hud-filename" style="display: none;">
+                <i class="fa-solid fa-file-video"></i> <span id="ai-file-name-txt">video.mp4</span>
+              </div>
             </div>
 
-            <!-- File Upload Dropzone Prompt (shown in 'file' source mode when no video yet) -->
+            <!-- Virtual Line Drag Hint (floating on hover) -->
+            <div class="ai-line-drag-indicator" id="ai-line-drag-hint">
+              <i class="fa-solid fa-arrows-up-down"></i> Geser Posisi Garis Deteksi
+            </div>
+
+            <!-- File Upload Dropzone Prompt (shown only when in 'file' source mode and no video is active) -->
             <div class="ai-upload-prompt" id="ai-upload-container" style="display: none;">
               <i class="fa-solid fa-cloud-arrow-up upload-big-icon"></i>
               <h3>Unggah Rekaman Video CCTV Lalu Lintas</h3>
-              <p>Format yang didukung: MP4, WebM, QuickTime (.mov). Beban analisis diproses 100% lokal di browser Anda dengan akselerasi GPU WebGL.</p>
-              <label for="ai-file-input" class="ai-upload-btn">
-                <i class="fa-solid fa-folder-open"></i> Pilih File Video
-              </label>
-              <input type="file" id="ai-file-input" accept="video/*" style="display: none;">
+              <p>Format: MP4, WebM, MOV. Anda juga dapat <strong>menyeret (drag & drop)</strong> file video langsung ke area ini.</p>
+              <div class="ai-upload-actions-row">
+                <label for="ai-file-input" class="ai-upload-btn">
+                  <i class="fa-solid fa-folder-open"></i> Pilih File Video
+                </label>
+                <input type="file" id="ai-file-input" accept="video/*" style="display: none;">
+              </div>
             </div>
+          </div>
+
+          <!-- Video Timeline & Scrubbing Transport Bar (for video files and recorded footage) -->
+          <div class="ai-timeline-bar" id="ai-timeline-bar">
+            <button class="ai-tbtn" id="btn-video-play-pause" title="Putar / Jeda Video">
+              <i class="fa-solid fa-play"></i>
+            </button>
+            <button class="ai-tbtn" id="btn-video-restart" title="Ulangi dari Awal">
+              <i class="fa-solid fa-rotate-left"></i>
+            </button>
+            <div class="ai-timeline-track">
+              <input type="range" class="ai-timeline-slider" id="ai-video-scrubber" min="0" max="100" value="0" step="0.1" title="Geser Durasi Video">
+            </div>
+            <div class="ai-timeline-time" id="ai-video-time">00:00 / 00:00</div>
+            <div class="ai-speed-group" title="Kecepatan Pemutaran Video">
+              <button class="ai-speed-btn" data-speed="0.5">0.5x</button>
+              <button class="ai-speed-btn active" data-speed="1.0">1.0x</button>
+              <button class="ai-speed-btn" data-speed="1.5">1.5x</button>
+              <button class="ai-speed-btn" data-speed="2.0">2.0x</button>
+            </div>
+            <label for="ai-file-input" class="ai-tbtn ai-btn-reupload" id="btn-reupload-label" title="Ganti File Video Lain">
+              <i class="fa-solid fa-arrow-up-from-bracket"></i> <span>Ganti File</span>
+            </label>
           </div>
 
           <!-- Playback & Quick Controls Bar -->
           <div class="ai-player-controls">
             <div class="ai-controls-left">
               <button class="ai-ctrl-btn btn-primary" id="btn-ai-play-pause">
-                <i class="fa-solid fa-pause"></i> <span>Jeda Deteksi</span>
+                <i class="fa-solid fa-brain"></i> <span>Deteksi AI Aktif</span>
+              </button>
+              <button class="ai-ctrl-btn active-toggle" id="btn-ai-toggle-trails" title="Tampilkan/Sembunyikan Garis Jejak Lintasan Objek">
+                <i class="fa-solid fa-route"></i> <span>Jejak Gerak</span>
+              </button>
+              <button class="ai-ctrl-btn active-toggle" id="btn-ai-toggle-speed" title="Tampilkan/Sembunyikan Estimasi Kecepatan (km/jam)">
+                <i class="fa-solid fa-gauge-simple-high"></i> <span>Kecepatan</span>
               </button>
               <button class="ai-ctrl-btn" id="btn-ai-snapshot" title="Simpan Gambar Tangkapan Deteksi">
                 <i class="fa-solid fa-camera"></i> <span>Screenshot</span>
               </button>
               <button class="ai-ctrl-btn" id="btn-ai-reset-counts" title="Reset Hitungan ke 0">
-                <i class="fa-solid fa-rotate-left"></i> <span>Reset</span>
+                <i class="fa-solid fa-arrow-rotate-left"></i> <span>Reset</span>
               </button>
             </div>
 
@@ -572,14 +611,14 @@
           <div class="ai-section">
             <label class="ai-section-title"><i class="fa-solid fa-video"></i> Sumber Input Video:</label>
             <div class="ai-source-tabs" role="tablist">
+              <button class="ai-src-btn" data-source="file" title="Unggah File Rekaman CCTV Sendiri">
+                <i class="fa-solid fa-upload"></i> Unggah File
+              </button>
               <button class="ai-src-btn active" data-source="live3d" title="Feed Langsung dari Kamera 3D Simulasi">
                 <i class="fa-solid fa-cube"></i> Simulasi 3D
               </button>
               <button class="ai-src-btn" data-source="demo" title="Rekaman Simulasi CCTV Simpang Setiabudi">
                 <i class="fa-solid fa-film"></i> CCTV Demo
-              </button>
-              <button class="ai-src-btn" data-source="file" title="Unggah File Video Sendiri">
-                <i class="fa-solid fa-upload"></i> Unggah File
               </button>
               <button class="ai-src-btn" data-source="webcam" title="Kamera Langsung / Webcam">
                 <i class="fa-solid fa-camera-web"></i> Webcam
@@ -593,36 +632,57 @@
               <label class="ai-section-title"><i class="fa-solid fa-chart-pie"></i> Penghitung Kendaraan Melintas:</label>
               <span class="ai-badge-total">TOTAL: <strong id="cnt-total">0</strong></span>
             </div>
+
+            <!-- Directional Flow Badges -->
+            <div class="ai-direction-flow-row">
+              <div class="ai-flow-chip chip-up" title="Kendaraan mengarah ke utara (arah Lembang / atas)">
+                <i class="fa-solid fa-arrow-up"></i> <span>Arah Lembang:</span> <strong id="cnt-dir-up">0</strong>
+              </div>
+              <div class="ai-flow-chip chip-down" title="Kendaraan mengarah ke selatan (arah Bandung / bawah)">
+                <i class="fa-solid fa-arrow-down"></i> <span>Arah Bandung:</span> <strong id="cnt-dir-down">0</strong>
+              </div>
+            </div>
+
+            <!-- Category Grid with Active Filter Checkboxes -->
             <div class="ai-counter-grid">
-              <div class="ai-count-box box-car">
+              <div class="ai-count-box box-car active" data-class="car" title="Klik untuk memfilter deteksi Mobil">
+                <div class="box-check"><i class="fa-solid fa-check"></i></div>
                 <div class="box-icon"><i class="fa-solid fa-car"></i></div>
                 <div class="box-data">
                   <span class="box-num" id="cnt-car">0</span>
                   <span class="box-lbl">Mobil</span>
                 </div>
               </div>
-              <div class="ai-count-box box-motor">
+
+              <div class="ai-count-box box-motor active" data-class="motorcycle" title="Klik untuk memfilter deteksi Sepeda Motor">
+                <div class="box-check"><i class="fa-solid fa-check"></i></div>
                 <div class="box-icon"><i class="fa-solid fa-motorcycle"></i></div>
                 <div class="box-data">
                   <span class="box-num" id="cnt-motor">0</span>
                   <span class="box-lbl">Sepeda Motor</span>
                 </div>
               </div>
-              <div class="ai-count-box box-bus">
+
+              <div class="ai-count-box box-bus active" data-class="bus" title="Klik untuk memfilter deteksi Angkot & Bus">
+                <div class="box-check"><i class="fa-solid fa-check"></i></div>
                 <div class="box-icon"><i class="fa-solid fa-bus"></i></div>
                 <div class="box-data">
                   <span class="box-num" id="cnt-bus">0</span>
                   <span class="box-lbl">Angkot / Bus</span>
                 </div>
               </div>
-              <div class="ai-count-box box-truck">
+
+              <div class="ai-count-box box-truck active" data-class="truck" title="Klik untuk memfilter deteksi Truk">
+                <div class="box-check"><i class="fa-solid fa-check"></i></div>
                 <div class="box-icon"><i class="fa-solid fa-truck"></i></div>
                 <div class="box-data">
                   <span class="box-num" id="cnt-truck">0</span>
                   <span class="box-lbl">Truk</span>
                 </div>
               </div>
-              <div class="ai-count-box box-person">
+
+              <div class="ai-count-box box-person active" data-class="person" title="Klik untuk memfilter deteksi Pejalan Kaki">
+                <div class="box-check"><i class="fa-solid fa-check"></i></div>
                 <div class="box-icon"><i class="fa-solid fa-person-walking"></i></div>
                 <div class="box-data">
                   <span class="box-num" id="cnt-person">0</span>
@@ -632,22 +692,33 @@
             </div>
           </div>
 
-          <!-- 3. AI Tuning Sliders -->
+          <!-- 3. AI Tuning Sliders & Presets -->
           <div class="ai-section">
-            <label class="ai-section-title"><i class="fa-solid fa-sliders"></i> Pengaturan Detektor:</label>
+            <div class="ai-section-header-flex">
+              <label class="ai-section-title"><i class="fa-solid fa-sliders"></i> Pengaturan Detektor:</label>
+              <!-- Presets -->
+              <div class="ai-presets-row">
+                <button class="ai-preset-btn" data-preset="sensitive" title="Sensitif tinggi untuk menangkap sepeda motor & pejalan kaki kecil">Sensitif (Motor)</button>
+                <button class="ai-preset-btn active" data-preset="standard" title="Keseimbangan optimal antara akurasi dan stabilitas">Standar</button>
+                <button class="ai-preset-btn" data-preset="strict" title="Hanya deteksi dengan kepastian tinggi">Ketat</button>
+              </div>
+            </div>
+
             <div class="ai-slider-row">
               <div class="slider-meta">
                 <span>Ambang Batas Kepercayaan (Confidence):</span>
-                <strong id="ai-conf-val">40%</strong>
+                <strong id="ai-conf-val">35%</strong>
               </div>
-              <input type="range" id="ai-conf-slider" min="20" max="85" value="40" class="ai-range-input">
+              <input type="range" id="ai-conf-slider" min="15" max="85" value="35" class="ai-range-input">
             </div>
+
             <div class="ai-slider-row">
               <div class="slider-meta">
                 <span>Posisi Garis Deteksi (Virtual Line Y):</span>
                 <strong id="ai-line-val">55%</strong>
               </div>
-              <input type="range" id="ai-line-slider" min="15" max="85" value="55" class="ai-range-input">
+              <input type="range" id="ai-line-slider" min="10" max="90" value="55" class="ai-range-input">
+              <span class="ai-slider-hint">💡 Klik & geser garis deteksi langsung di layar video untuk mengatur posisinya</span>
             </div>
           </div>
 
