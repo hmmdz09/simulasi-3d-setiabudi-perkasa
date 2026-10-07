@@ -2729,3 +2729,24 @@ input[type="range"]::-webkit-slider-thumb:hover {
   }
 }
 
+.ai-info-pill-note {
+  background: rgba(16, 185, 129, 0.08);
+  border: 1px solid rgba(16, 185, 129, 0.25);
+  border-radius: 8px;
+  padding: 8px 10px;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 11px;
+  color: #cbd5e1;
+  line-height: 1.4;
+  margin-top: 10px;
+}
+
+.ai-info-pill-note i {
+  color: #10b981;
+  font-size: 13px;
+  margin-top: 1px;
+  flex-shrink: 0;
+}
+

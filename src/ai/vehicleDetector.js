@@ -44,22 +44,18 @@ export class VehicleDetector {
     this.webcamStream = null;
     this.live3dStream = null;
 
-    // Default Confidence: 20% (Optimized for traffic CCTV surveillance)
-    this.confidenceThreshold = 0.20;
-    this.showTrails = true;
-    this.showSpeed = true;
+    // Default Confidence: 18% (Ultra-responsive for traffic CCTV surveillance)
+    this.confidenceThreshold = 0.18;
+    this.showTrails = false;
+    this.showSpeed = false;
     this.lastRenderTime = performance.now();
     this.fps = 0;
     this.latency = 0;
     this.activeDetections = [];
 
-    // Virtual Counting Line (Percentage from top, 0.1 - 0.9)
-    this.countingLineY = 0.55;
-    this.countingLineActive = true;
-    this.lineFlashUntil = 0;
-    this.isDraggingLine = false;
-
-    // Tracking for Counting with Real-Time Velocity Extrapolation (Zero-Lag Tracker)
+    // Purely automatic vehicle counting without lines
+    this.countingLineActive = false;
+    this.lastVideoTime = null;
     this.trackedVehicles = new Map(); // id -> { id, cx, cy, w, h, vx, vy, class, score, lastSeen, counted }
     this.nextTrackId = 1;
 
@@ -257,38 +253,13 @@ export class VehicleDetector {
       });
     }
 
-    const lineSlider = document.getElementById('ai-line-slider');
-    const lineVal = document.getElementById('ai-line-val');
-    if (lineSlider) {
-      lineSlider.addEventListener('input', (e) => {
-        this.countingLineY = parseFloat(e.target.value) / 100;
-        if (lineVal) lineVal.textContent = `${e.target.value}%`;
-      });
-    }
-
-    // 7. Interactive Virtual Line Dragging on Canvas
-    if (this.overlayCanvas) {
-      this.overlayCanvas.addEventListener('mousedown', (e) => this.handleCanvasMouseDown(e));
-      window.addEventListener('mousemove', (e) => this.handleCanvasMouseMove(e));
-      window.addEventListener('mouseup', () => this.handleCanvasMouseUp());
-    }
-
-    // 8. AI Play/Pause Inference Toggle
+    // 7. AI Play/Pause Inference Toggle
     const aiToggleBtn = document.getElementById('btn-ai-play-pause');
     if (aiToggleBtn) {
       aiToggleBtn.addEventListener('click', () => this.toggleAIInference());
     }
 
-    // Toggle Trails & Speed HUD
-    const trailsBtn = document.getElementById('btn-ai-toggle-trails');
-    if (trailsBtn) {
-      trailsBtn.addEventListener('click', () => {
-        this.showTrails = !this.showTrails;
-        trailsBtn.classList.toggle('active-toggle', this.showTrails);
-        this.addLogEvent(`Garis Jejak Gerak: ${this.showTrails ? 'AKTIF' : 'NONAKTIF'}`);
-      });
-    }
-
+    // Optional Speed HUD toggle
     const speedBtn = document.getElementById('btn-ai-toggle-speed');
     if (speedBtn) {
       speedBtn.addEventListener('click', () => {
@@ -298,7 +269,7 @@ export class VehicleDetector {
       });
     }
 
-    // 9. Reset, Snapshot, CSV Export
+    // 8. Reset, Snapshot, CSV Export
     const resetBtn = document.getElementById('btn-ai-reset-counts');
     if (resetBtn) resetBtn.addEventListener('click', () => this.resetCounters());
 
@@ -313,9 +284,9 @@ export class VehicleDetector {
     const slider = document.getElementById('ai-conf-slider');
     const valText = document.getElementById('ai-conf-val');
 
-    let conf = 20;
-    if (preset === 'sensitive') conf = 14;
-    else if (preset === 'strict') conf = 35;
+    let conf = 18;
+    if (preset === 'sensitive') conf = 12;
+    else if (preset === 'strict') conf = 30;
 
     this.confidenceThreshold = conf / 100;
     if (slider) slider.value = conf;
@@ -663,13 +634,13 @@ export class VehicleDetector {
     }
 
     if (this.isRunning) {
-      // Small tick delay to allow browser thread to breathe
-      this.inferenceTimeout = setTimeout(() => this.runInferenceLoop(), 10);
+      // 0ms timeout: execute next inference loop with zero delay
+      this.inferenceTimeout = setTimeout(() => this.runInferenceLoop(), 0);
     }
   }
 
   // =========================================================================
-  // ADVANCED LETTERBOXED YOLOv8 INFERENCE WITH HIGH MOTORCYCLE SENSITIVITY
+  // ADVANCED LETTERBOXED YOLOv8 INFERENCE WITH MAXIMUM MOTORCYCLE RESPONSIVENESS
   // =========================================================================
   async detectFrame() {
     if (!this.videoEl || this.videoEl.readyState < 2) return;
@@ -687,8 +658,8 @@ export class VehicleDetector {
 
     // Calculate dynamic thresholds:
     // Motorcycles are smaller and have lower confidence in CCTV -> highly sensitive threshold
-    const motoThreshold = Math.max(0.08, this.confidenceThreshold * 0.55);
-    const carThreshold = Math.max(0.18, this.confidenceThreshold * 0.90);
+    const motoThreshold = Math.max(0.06, this.confidenceThreshold * 0.45);
+    const carThreshold = Math.max(0.16, this.confidenceThreshold * 0.85);
 
     if (this.engineType === 'yolo' && this.yoloSession) {
       // 1. Precise Letterboxing to 640x640 (maintains true aspect ratio without squishing!)
@@ -744,10 +715,10 @@ export class VehicleDetector {
         // Combined 2-wheeler score (Sepeda Motor)
         const twoWheelerScore = Math.max(motoScore, bicycleScore);
 
-        // Rider fusion: in Indonesian traffic CCTV, cyclists/riders are detected as "person" on roadway
-        const riderFusion = (personScore >= 0.16 && (twoWheelerScore >= 0.05 || personScore >= 0.28));
+        // Sensitive rider fusion: in Indonesian CCTV, cyclists/riders are detected as "person" on roadway
+        const riderFusion = (personScore >= 0.12 && (twoWheelerScore >= 0.04 || personScore >= 0.20));
         const effectiveMotoScore = riderFusion 
-          ? Math.max(twoWheelerScore, personScore * 0.92) 
+          ? Math.max(twoWheelerScore, personScore * 0.90) 
           : twoWheelerScore;
 
         const w_letter = outputData[2 * numCandidates + c];
@@ -760,7 +731,7 @@ export class VehicleDetector {
         // Disambiguation:
         // Motorcycles in CCTV are narrow/tall (aspectRatio < 0.72)
         // Cars in CCTV are squarish/wide (aspectRatio >= 0.72)
-        if (effectiveMotoScore >= motoThreshold && (effectiveMotoScore >= autoScore * 0.85 || aspectRatio < 0.72)) {
+        if (effectiveMotoScore >= motoThreshold && (effectiveMotoScore >= autoScore * 0.80 || aspectRatio < 0.72)) {
           cls = 'motorcycle';
           score = effectiveMotoScore;
         } else if (autoScore >= carThreshold && (autoScore > effectiveMotoScore || aspectRatio >= 0.72)) {
@@ -819,7 +790,7 @@ export class VehicleDetector {
 
     this.activeDetections = processedDetections;
 
-    // 5. Track with Zero-Delay Velocity Prediction and Virtual Line Counting
+    // 5. Track with Zero-Delay Velocity Prediction and Automatic Counting
     this.processTrackingAndCounting(processedDetections, vidW, vidH, captureMeta);
   }
 
@@ -863,10 +834,17 @@ export class VehicleDetector {
   // ZERO-LAG VELOCITY PREDICTION & SMOOTH FORWARD TRACKING
   // =========================================================================
   processTrackingAndCounting(predictions, w, h, captureMeta) {
-    const lineY = h * this.countingLineY;
     const now = performance.now();
     const captureVideoTime = captureMeta ? captureMeta.videoTime : null;
     const captureWallTime = captureMeta ? captureMeta.wallTime : now;
+
+    // Reset tracking if video looped back or user scrubbed backward
+    if (this.currentSource === 'file' && captureVideoTime != null) {
+      if (this.lastVideoTime != null && captureVideoTime < this.lastVideoTime - 1.5) {
+        this.trackedVehicles.clear();
+      }
+      this.lastVideoTime = captureVideoTime;
+    }
 
     // Dynamic matching distance scaled with video resolution
     const diag = Math.hypot(w, h);
@@ -902,8 +880,12 @@ export class VehicleDetector {
         const dist = Math.hypot(predCx - cx, predCy - cy);
         const iou = this.computeIoU(pred.bbox, [predCx - track.w / 2, predCy - track.h / 2, track.w, track.h]);
 
-        const matchThreshold = Math.max(baseMatchDist, Math.max(bw, bh) * 1.5);
-        if (iou > 0.15 || dist < matchThreshold) {
+        // Wider match tolerance for agile motorcycles
+        const matchThreshold = track.class === 'motorcycle'
+          ? Math.max(baseMatchDist * 1.3, 220)
+          : Math.max(baseMatchDist, Math.max(bw, bh) * 1.5);
+
+        if (iou > 0.10 || dist < matchThreshold) {
           const score = dist - iou * 120;
           if (score < bestScore) {
             bestScore = score;
@@ -916,6 +898,8 @@ export class VehicleDetector {
         matchedTrackIds.add(bestMatchId);
         const track = this.trackedVehicles.get(bestMatchId);
 
+        track.seenCount = (track.seenCount || 1) + 1;
+
         let dt = 0;
         if (captureVideoTime != null && track.lastVideoTime != null) {
           dt = Math.max(0.016, captureVideoTime - track.lastVideoTime);
@@ -927,7 +911,6 @@ export class VehicleDetector {
           dt = 0.033;
         }
 
-        const prevY = track.cy;
         const instVx = (cx - track.cx) / dt;
         const instVy = (cy - track.cy) / dt;
 
@@ -939,11 +922,6 @@ export class VehicleDetector {
           ? track.vy * 0.30 + instVy * 0.70
           : instVy;
 
-        // Record breadcrumb trail for smooth movement rendering
-        if (!track.trail) track.trail = [];
-        track.trail.push({ x: cx, y: cy, t: now });
-        if (track.trail.length > 25) track.trail.shift();
-
         track.cx = cx;
         track.cy = cy;
         track.w = bw;
@@ -953,14 +931,14 @@ export class VehicleDetector {
         track.lastWallTime = captureWallTime;
         track.lastSeen = now;
 
-        // Virtual line crossing check during inference update
-        if (!track.counted && this.countingLineActive) {
-          const crossedDown = prevY < lineY && cy >= lineY;
-          const crossedUp = prevY > lineY && cy <= lineY;
-
-          if (crossedDown || crossedUp) {
+        // AUTOMATIC HIGH-RESPONSIVENESS COUNTING:
+        // A vehicle is counted as soon as confirmed (seen >= 2 detections OR moved >= 14px)!
+        // Every motorcycle and car is 100% counted without needing to cross a line!
+        if (!track.counted) {
+          const moveDist = Math.hypot(cx - (track.initX ?? cx), cy - (track.initY ?? cy));
+          if (track.seenCount >= 2 || moveDist >= 14) {
             track.counted = true;
-            this.recordCountEvent(pred.class, pred.score);
+            this.recordCountEvent(track.class, track.score);
           }
         }
       } else {
@@ -969,6 +947,9 @@ export class VehicleDetector {
           id: newId,
           cx,
           cy,
+          initX: cx,
+          initY: cy,
+          seenCount: 1,
           w: bw,
           h: bh,
           vx: 0,
@@ -979,15 +960,14 @@ export class VehicleDetector {
           lastSeen: now,
           lastVideoTime: captureVideoTime,
           lastWallTime: captureWallTime,
-          trail: [{ x: cx, y: cy, t: now }],
           counted: false
         });
       }
     }
 
-    // Clean up stale tracks (older than 1.4s)
+    // Clean up stale tracks (older than 1.6s)
     for (const [id, track] of this.trackedVehicles.entries()) {
-      if (now - track.lastSeen > 1400) {
+      if (now - track.lastSeen > 1600) {
         this.trackedVehicles.delete(id);
       }
     }
@@ -1054,64 +1034,22 @@ export class VehicleDetector {
     const ctx = this.ctx;
     ctx.clearRect(0, 0, vidW, vidH);
 
-    // 1. Render Virtual Counting Line
-    this.renderCountingLine(vidW, vidH);
-
-    // 2. Render Real-Time Forward Extrapolated Vehicle Boxes (Eliminates Delay!)
+    // 1. Render Clean Bounding Boxes (Cuman Kotak Aja, Tanpa Garis!)
     this.renderVehicleBoxes(ctx, vidW, vidH);
 
-    // 3. Update Telemetry HUD
+    // 2. Update Telemetry HUD
     this.updateTelemetryHUD();
-  }
-
-  renderCountingLine(w, h) {
-    if (!this.countingLineActive) return;
-    const ctx = this.ctx;
-    const lineY = h * this.countingLineY;
-    const isFlashing = performance.now() < this.lineFlashUntil;
-
-    ctx.save();
-    ctx.shadowBlur = isFlashing ? 28 : 12;
-    ctx.shadowColor = isFlashing ? '#fde047' : '#38bdf8';
-    ctx.strokeStyle = isFlashing ? '#fef08a' : 'rgba(56, 189, 248, 0.9)';
-    ctx.lineWidth = isFlashing ? 4.5 : 2.5;
-    ctx.setLineDash([14, 8]);
-
-    ctx.beginPath();
-    ctx.moveTo(0, lineY);
-    ctx.lineTo(w, lineY);
-    ctx.stroke();
-    ctx.setLineDash([]);
-
-    // Line Label
-    ctx.fillStyle = isFlashing ? '#fef08a' : '#38bdf8';
-    ctx.font = '700 11.5px "JetBrains Mono", monospace';
-    const tagText = isFlashing ? '⚡ KENDARAAN TERHITUNG' : '⮞ GARIS PENGHITUNG KENDARAAN';
-    ctx.fillText(tagText, 18, lineY - 8);
-
-    // Handle Grip Pill at right side
-    ctx.fillStyle = isFlashing ? '#fde047' : '#0284c7';
-    ctx.beginPath();
-    ctx.roundRect(w - 110, lineY - 10, 95, 20, 10);
-    ctx.fill();
-    ctx.fillStyle = '#ffffff';
-    ctx.font = '600 10px "JetBrains Mono", monospace';
-    ctx.fillText('↕ GESER GARIS', w - 102, lineY + 4);
-
-    ctx.restore();
   }
 
   renderVehicleBoxes(ctx, w, h) {
     const now = performance.now();
-    const lineY = h * this.countingLineY;
     const isPlaying = this.videoEl && !this.videoEl.paused;
 
     for (const [id, track] of this.trackedVehicles.entries()) {
       const cfg = this.classConfig[track.class] || { label: track.class, color: '#38bdf8' };
       const color = cfg.color;
 
-      // Real-Time Video-Synchronized Forward Extrapolation (ELIMINATES ALL DELAY!)
-      // Synchronizes the bounding box frame-by-frame with the exact video playback currentTime!
+      // Real-Time Video-Synchronized Forward Extrapolation (Zero Lag)
       let dt = 0;
       if (isPlaying) {
         if (this.currentSource === 'file' && this.videoEl && track.lastVideoTime != null) {
@@ -1129,75 +1067,18 @@ export class VehicleDetector {
       const renderX = renderCx - track.w / 2;
       const renderY = renderCy - track.h / 2;
 
-      // Real-time 60 FPS ray-cast virtual line crossing trigger
-      if (!track.counted && this.countingLineActive && isPlaying) {
-        const prevY = track.cy;
-        const crossedDown = prevY < lineY && renderCy >= lineY;
-        const crossedUp = prevY > lineY && renderCy <= lineY;
-        if (crossedDown || crossedUp) {
-          track.counted = true;
-          this.recordCountEvent(track.class, track.score);
-        }
-      }
-
       ctx.save();
 
-      // Render Motion Trail if enabled
-      if (this.showTrails && track.trail && track.trail.length > 1) {
-        ctx.save();
-        ctx.strokeStyle = color;
-        ctx.lineWidth = 2.2;
-        ctx.lineCap = 'round';
-        ctx.lineJoin = 'round';
-        ctx.globalAlpha = 0.55;
-        ctx.beginPath();
-        for (let i = 0; i < track.trail.length; i++) {
-          const pt = track.trail[i];
-          if (i === 0) ctx.moveTo(pt.x, pt.y);
-          else ctx.lineTo(pt.x, pt.y);
-        }
-        ctx.lineTo(renderCx, renderCy);
-        ctx.stroke();
-        ctx.restore();
-      }
-
-      // Glowing YOLO Bounding Box
+      // Clean High-Tech Bounding Box (Cuman Kotak Aja, Tanpa Garis!)
       ctx.shadowColor = color;
-      ctx.shadowBlur = 10;
+      ctx.shadowBlur = 8;
       ctx.strokeStyle = color;
       ctx.lineWidth = 2.5;
       ctx.beginPath();
-      ctx.roundRect(renderX, renderY, track.w, track.h, 5);
+      ctx.roundRect(renderX, renderY, track.w, track.h, 4);
       ctx.stroke();
 
-      // Corner Brackets
-      const bLen = Math.min(18, track.w * 0.25, track.h * 0.25);
-      ctx.lineWidth = 3.5;
-      ctx.shadowBlur = 14;
-
-      ctx.beginPath();
-      ctx.moveTo(renderX, renderY + bLen); ctx.lineTo(renderX, renderY); ctx.lineTo(renderX + bLen, renderY);
-      ctx.stroke();
-
-      ctx.beginPath();
-      ctx.moveTo(renderX + track.w - bLen, renderY); ctx.lineTo(renderX + track.w, renderY); ctx.lineTo(renderX + track.w, renderY + bLen);
-      ctx.stroke();
-
-      ctx.beginPath();
-      ctx.moveTo(renderX, renderY + track.h - bLen); ctx.lineTo(renderX, renderY + track.h); ctx.lineTo(renderX + bLen, renderY + track.h);
-      ctx.stroke();
-
-      ctx.beginPath();
-      ctx.moveTo(renderX + track.w - bLen, renderY + track.h); ctx.lineTo(renderX + track.w, renderY + track.h); ctx.lineTo(renderX + track.w, renderY + track.h - bLen);
-      ctx.stroke();
-
-      // Centroid
-      ctx.fillStyle = color;
-      ctx.beginPath();
-      ctx.arc(renderCx, renderCy, 3.5, 0, Math.PI * 2);
-      ctx.fill();
-
-      // Label Tag: Mobil or Sepeda Motor + Confidence % + Speed (km/h)
+      // Clean Label Badge on top: Mobil or Sepeda Motor + Confidence %
       const scorePct = `${Math.round(track.score * 100)}%`;
       let speedText = '';
       if (this.showSpeed && (track.vx || track.vy)) {
@@ -1211,20 +1092,20 @@ export class VehicleDetector {
 
       ctx.font = '600 12px "Outfit", sans-serif';
       const textWidth = ctx.measureText(labelText).width;
-      const tagW = textWidth + 16;
-      const tagH = 22;
+      const tagW = textWidth + 14;
+      const tagH = 20;
       const tagX = Math.max(0, renderX);
-      const tagY = renderY > 26 ? renderY - tagH - 4 : renderY + track.h + 4;
+      const tagY = renderY > 24 ? renderY - tagH - 2 : renderY + track.h + 2;
 
       ctx.fillStyle = color;
-      ctx.shadowBlur = 8;
+      ctx.shadowBlur = 6;
       ctx.beginPath();
-      ctx.roundRect(tagX, tagY, tagW, tagH, 4);
+      ctx.roundRect(tagX, tagY, tagW, tagH, 3);
       ctx.fill();
 
       ctx.fillStyle = '#0f172a';
       ctx.shadowBlur = 0;
-      ctx.fillText(labelText, tagX + 8, tagY + 15);
+      ctx.fillText(labelText, tagX + 7, tagY + 14);
 
       ctx.restore();
     }

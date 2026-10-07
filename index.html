@@ -534,10 +534,6 @@
               </div>
             </div>
 
-            <!-- Virtual Line Drag Hint (floating on hover) -->
-            <div class="ai-line-drag-indicator" id="ai-line-drag-hint">
-              <i class="fa-solid fa-arrows-up-down"></i> Geser Posisi Garis Deteksi
-            </div>
 
             <!-- File Upload Dropzone Prompt (shown only when in 'file' source mode and no video is active) -->
             <div class="ai-upload-prompt" id="ai-upload-container" style="display: none;">
@@ -581,12 +577,6 @@
             <div class="ai-controls-left">
               <button class="ai-ctrl-btn btn-primary" id="btn-ai-play-pause">
                 <i class="fa-solid fa-brain"></i> <span>Deteksi AI Aktif</span>
-              </button>
-              <button class="ai-ctrl-btn active-toggle" id="btn-ai-toggle-trails" title="Tampilkan/Sembunyikan Garis Jejak Lintasan Objek">
-                <i class="fa-solid fa-route"></i> <span>Jejak Gerak</span>
-              </button>
-              <button class="ai-ctrl-btn active-toggle" id="btn-ai-toggle-speed" title="Tampilkan/Sembunyikan Estimasi Kecepatan (km/jam)">
-                <i class="fa-solid fa-gauge-simple-high"></i> <span>Kecepatan</span>
               </button>
               <button class="ai-ctrl-btn" id="btn-ai-snapshot" title="Simpan Gambar Tangkapan Deteksi">
                 <i class="fa-solid fa-camera"></i> <span>Screenshot</span>
@@ -667,27 +657,23 @@
               <label class="ai-section-title"><i class="fa-solid fa-sliders"></i> Pengaturan Detektor:</label>
               <!-- Presets -->
               <div class="ai-presets-row">
-                <button class="ai-preset-btn" data-preset="sensitive" title="Sensitif tinggi untuk menangkap sepeda motor kecil dan pengendara di jalan">Sensitif (Motor: 14%)</button>
-                <button class="ai-preset-btn active" data-preset="standard" title="Keseimbangan optimal untuk Mobil & Motor di CCTV">Standar (20%)</button>
-                <button class="ai-preset-btn" data-preset="strict" title="Hanya deteksi dengan kepastian tinggi">Ketat (35%)</button>
+                <button class="ai-preset-btn" data-preset="sensitive" title="Sensitif tinggi untuk menangkap sepeda motor kecil dan pengendara di jalan">Sensitif (Motor: 12%)</button>
+                <button class="ai-preset-btn active" data-preset="standard" title="Keseimbangan optimal untuk Mobil & Motor di CCTV">Standar (18%)</button>
+                <button class="ai-preset-btn" data-preset="strict" title="Hanya deteksi dengan kepastian tinggi">Ketat (30%)</button>
               </div>
             </div>
 
             <div class="ai-slider-row">
               <div class="slider-meta">
                 <span>Kepekaan Deteksi (Confidence):</span>
-                <strong id="ai-conf-val">20%</strong>
+                <strong id="ai-conf-val">18%</strong>
               </div>
-              <input type="range" id="ai-conf-slider" min="5" max="60" value="20" class="ai-range-input">
+              <input type="range" id="ai-conf-slider" min="5" max="50" value="18" class="ai-range-input">
             </div>
 
-            <div class="ai-slider-row">
-              <div class="slider-meta">
-                <span>Posisi Garis Deteksi (Virtual Line Y):</span>
-                <strong id="ai-line-val">55%</strong>
-              </div>
-              <input type="range" id="ai-line-slider" min="10" max="90" value="55" class="ai-range-input">
-              <span class="ai-slider-hint">💡 Klik & geser garis deteksi langsung di layar video untuk mengatur posisinya</span>
+            <div class="ai-info-pill-note">
+              <i class="fa-solid fa-square-check text-green"></i>
+              <span><strong>Mode Kotak Bersih (Tanpa Garis)</strong>: Setiap kendaraan (Mobil & Motor) yang melintas otomatis dihitung secara akurat tanpa terhalang garis.</span>
             </div>
           </div>
 
@@ -696,7 +682,7 @@
             <label class="ai-section-title"><i class="fa-solid fa-list-check"></i> Log Deteksi Real-time:</label>
             <div class="ai-event-stream" id="ai-event-stream">
               <div class="ai-log-entry ai-log-placeholder">
-                <span>Menunggu kendaraan melintasi garis deteksi...</span>
+                <span>Menunggu kendaraan melintas di kamera...</span>
               </div>
             </div>
           </div>
