@@ -2,8 +2,11 @@ import * as ort from 'onnxruntime-web/webgpu';
 import * as tf from '@tensorflow/tfjs';
 import * as cocoSsd from '@tensorflow-models/coco-ssd';
 
-// Explicitly configure jsDelivr CDN paths for all ONNX WASM binaries to eliminate 404s on Vercel
-ort.env.wasm.wasmPaths = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.30.0/dist/';
+// Only load from jsDelivr on production/Vercel; on localhost use fast local bundle
+const isLocalEnv = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+if (!isLocalEnv) {
+  ort.env.wasm.wasmPaths = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.30.0/dist/';
+}
 
 export class VehicleDetector {
   constructor(app) {
@@ -57,7 +60,7 @@ export class VehicleDetector {
     // Sliding Window FPS Metering (smooth 60 FPS readout without jitter)
     this.fpsFrameCount = 0;
     this.fpsLastUpdate = performance.now();
-    this.modelVersion = 'YOLOv26';
+    this.modelVersion = 'YOLOv8';
 
     // Default Confidence: 18% (Ultra-responsive for traffic CCTV surveillance)
     this.confidenceThreshold = 0.18;
@@ -68,8 +71,11 @@ export class VehicleDetector {
     this.latency = 0;
     this.activeDetections = [];
 
-    // Purely automatic vehicle counting without lines
-    this.countingLineActive = false;
+    // Interactive Virtual Counting Line (Garis Detektor)
+    this.countingLineActive = true;
+    this.countingLineY = 0.55;
+    this.isDraggingLine = false;
+    this.lineFlashUntil = 0;
     this.lastVideoTime = null;
     this.trackedVehicles = new Map(); // id -> { id, cx, cy, w, h, vx, vy, class, score, lastSeen, counted }
     this.nextTrackId = 1;
@@ -103,42 +109,36 @@ export class VehicleDetector {
   }
 
   // =========================================================================
-  // BULLETPROOF ULTRALYTICS YOLOv26 ONNX MODEL LOADER & WEB WORKER PIPELINE
+  // ULTRALYTICS YOLOv8 ONNX MODEL LOADER & WEB WORKER PIPELINE
   // =========================================================================
   async loadModel() {
     if (this.isModelReady || this.isLoadingModel) return;
     this.isLoadingModel = true;
-    this.updateStatusBadge('Memuat Model AI (YOLOv26)...', 'loading');
+    this.updateStatusBadge('Memuat Model AI (YOLOv8)...', 'loading');
 
-    const yolo26ModelUrl = `${window.location.origin}/models/yolov26n.onnx`;
     const yolo8ModelUrl = `${window.location.origin}/models/yolov8n.onnx`;
 
-    // Ensure wasm paths are explicitly set before creating any session
-    ort.env.wasm.wasmPaths = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.30.0/dist/';
+    // Ensure wasm paths are explicitly set to local /wasm/ directory
+    ort.env.wasm.wasmPaths = '/wasm/';
 
-    // 1. Preferred High-Performance: Dedicated Web Worker with YOLO (60 FPS unblocked!)
+    // 1. Preferred High-Performance: Dedicated Web Worker with YOLOv8 (60 FPS unblocked!)
     try {
       if (typeof Worker !== 'undefined') {
         let workerReady = false;
         try {
-          workerReady = await this.initWorker(yolo26ModelUrl);
-        } catch (err26) {
-          console.warn('YOLOv26 worker init failed, mencoba fallback YOLOv8:', err26);
-          try {
-            workerReady = await this.initWorker(yolo8ModelUrl);
-          } catch (err8) {
-            console.warn('YOLOv8 worker init failed:', err8);
-          }
+          workerReady = await this.initWorker(yolo8ModelUrl);
+        } catch (err8) {
+          console.warn('YOLOv8 worker init failed:', err8);
         }
 
         if (workerReady) {
           this.engineType = 'yolo_worker';
           this.isModelReady = true;
           this.isLoadingModel = false;
-          const label = this.modelVersion || 'YOLOv26';
-          this.updateStatusBadge(`${label} AI Aktif (60 FPS Worker)`, 'ready');
-          this.updateModelTabsUI(label);
-          this.addLogEvent(`Model Ultralytics ${label} Nano aktif via Web Worker (60 FPS).`);
+          this.modelVersion = 'YOLOv8';
+          this.updateStatusBadge('YOLOv8 AI Aktif (60 FPS Worker)', 'ready');
+          this.updateModelTabsUI('YOLOv8');
+          this.addLogEvent('Model Ultralytics YOLOv8 Nano aktif via Web Worker (60 FPS).');
           if (this.videoEl && !this.videoEl.paused) {
             this.startDetection();
           }
@@ -149,31 +149,21 @@ export class VehicleDetector {
       console.warn('Web Worker initialization failed, fallback ke Main Thread:', workerErr);
     }
 
-    // 2. Fallback: Main Thread ONNX WebAssembly Session (YOLOv26 / YOLOv8)
+    // 2. Fallback: Main Thread ONNX WebAssembly Session (YOLOv8)
     try {
       ort.env.wasm.numThreads = 1;
       ort.env.wasm.simd = true;
 
-      try {
-        this.yoloSession = await ort.InferenceSession.create(yolo26ModelUrl, {
-          executionProviders: ['webgpu', 'webgl', 'wasm'],
-          graphOptimizationLevel: 'all'
-        });
-        this.modelVersion = 'YOLOv26';
-      } catch (err26Main) {
-        console.warn('YOLOv26 main-thread failed, fallback to YOLOv8:', err26Main);
-        this.yoloSession = await ort.InferenceSession.create(yolo8ModelUrl, {
-          executionProviders: ['webgpu', 'webgl', 'wasm'],
-          graphOptimizationLevel: 'all'
-        });
-        this.modelVersion = 'YOLOv8';
-      }
-
+      this.yoloSession = await ort.InferenceSession.create(yolo8ModelUrl, {
+        executionProviders: ['wasm'],
+        graphOptimizationLevel: 'all'
+      });
+      this.modelVersion = 'YOLOv8';
       this.engineType = 'yolo';
       this.isModelReady = true;
       this.isLoadingModel = false;
-      this.updateStatusBadge(`${this.modelVersion} AI Aktif (ONNX)`, 'ready');
-      this.addLogEvent(`Model Ultralytics ${this.modelVersion} Nano aktif via ONNX Runtime.`);
+      this.updateStatusBadge('YOLOv8 AI Aktif (ONNX)', 'ready');
+      this.addLogEvent('Model Ultralytics YOLOv8 Nano aktif via ONNX Runtime.');
       if (this.videoEl && !this.videoEl.paused) {
         this.startDetection();
       }
@@ -211,7 +201,7 @@ export class VehicleDetector {
 
         const timer = setTimeout(() => {
           reject(new Error('Inisialisasi Web Worker timeout'));
-        }, 60000);
+        }, 5000);
 
         this.worker.onmessage = (e) => {
           const data = e.data;
@@ -219,10 +209,10 @@ export class VehicleDetector {
 
           if (data.type === 'INIT_SUCCESS') {
             clearTimeout(timer);
-            this.modelVersion = data.modelName || 'YOLOv26';
+            this.modelVersion = 'YOLOv8';
             this.workerErrorCount = 0;
-            this.updateModelTabsUI(this.modelVersion);
-            this.updateStatusBadge(`${this.modelVersion} AI Aktif (60 FPS Worker)`, 'ready');
+            this.updateModelTabsUI('YOLOv8');
+            this.updateStatusBadge('YOLOv8 AI Aktif (60 FPS Worker)', 'ready');
             resolve(true);
           } else if (data.type === 'INIT_ERROR') {
             clearTimeout(timer);
@@ -232,20 +222,8 @@ export class VehicleDetector {
             this.handleWorkerDetections(data);
           } else if (data.type === 'DETECT_ERROR') {
             this.isWorkerBusy = false;
-            this.workerErrorCount = (this.workerErrorCount || 0) + 1;
-            console.warn('Worker detection error:', data.error, `(gagal ke-${this.workerErrorCount})`);
-            
-            // Auto-recovery: If YOLOv26 worker fails 3 times consecutively, seamlessly fallback to YOLOv8
-            if (this.workerErrorCount >= 3) {
-              if (this.modelVersion === 'YOLOv26') {
-                this.addLogEvent('Mengalihkan otomatis ke Ultralytics YOLOv8 Nano...');
-                this.switchModel('yolov8');
-              } else {
-                this.updateStatusBadge('Kendala AI Worker (Mencoba ulang...)', 'error');
-              }
-              this.workerErrorCount = 0;
-            }
-            this.scheduleNextWorkerFrame(80);
+            console.warn('Worker detection error:', data.error);
+            this.scheduleNextWorkerFrame(60);
           }
         };
 
@@ -262,13 +240,10 @@ export class VehicleDetector {
   }
 
   async switchModel(modelKey) {
-    const isYolo26 = modelKey === 'yolov26';
-    const targetModelUrl = isYolo26
-      ? `${window.location.origin}/models/yolov26n.onnx`
-      : `${window.location.origin}/models/yolov8n.onnx`;
-    const targetName = isYolo26 ? 'YOLOv26' : 'YOLOv8';
+    const targetModelUrl = `${window.location.origin}/models/yolov8n.onnx`;
+    const targetName = 'YOLOv8';
 
-    this.updateStatusBadge(`Beralih ke ${targetName}...`, 'loading');
+    this.updateStatusBadge(`Memuat ${targetName}...`, 'loading');
     this.addLogEvent(`Memuat model ${targetName}...`);
     this.updateModelTabsUI(targetName);
 
@@ -299,18 +274,13 @@ export class VehicleDetector {
   }
 
   updateModelTabsUI(modelName) {
-    const is26 = (modelName || '').toLowerCase().includes('26');
-    const btn26 = document.getElementById('btn-model-yolo26');
-    const btn8 = document.getElementById('btn-model-yolo8');
-    if (btn26 && btn8) {
-      btn26.classList.toggle('active', is26);
-      btn8.classList.toggle('active', !is26);
-    }
     const titleSub = document.querySelector('.ai-header-subtitle');
     if (titleSub) {
-      titleSub.textContent = is26
-        ? 'Deteksi otomatis Kendaraan (Mobil & Sepeda Motor) berbasis Ultralytics YOLOv26 (NMS-Free End-to-End)'
-        : 'Deteksi otomatis Kendaraan (Mobil & Sepeda Motor) berbasis Ultralytics YOLOv8 Nano (Akurat & Responsif)';
+      titleSub.textContent = 'Deteksi otomatis Kendaraan (Mobil & Sepeda Motor) berbasis Ultralytics YOLOv8 Nano';
+    }
+    const tag = document.getElementById('ai-active-model-tag');
+    if (tag) {
+      tag.textContent = 'YOLOv8 Nano';
     }
   }
 
@@ -403,6 +373,33 @@ export class VehicleDetector {
     // 1. Navbar Toggle & Modal Close
     const toggleBtn = document.getElementById('btn-toggle-ai-vision');
     if (toggleBtn) toggleBtn.addEventListener('click', () => this.toggleModal());
+
+    const navCctvBtn = document.getElementById('btn-nav-cctv');
+    if (navCctvBtn) {
+      navCctvBtn.addEventListener('click', () => {
+        if (this.app && this.app.pageNav && this.app.pageNav.currentPage !== 'simulasi') {
+          this.app.pageNav.switchPage('simulasi');
+        }
+        this.toggleModal();
+      });
+    }
+
+    const camCctvBtn = document.getElementById('btn-cam-cctv');
+    if (camCctvBtn) {
+      camCctvBtn.addEventListener('click', () => {
+        if (this.app && this.app.pageNav && this.app.pageNav.currentPage !== 'simulasi') {
+          this.app.pageNav.switchPage('simulasi');
+        }
+        this.openModal();
+      });
+    }
+
+    const deckCctvBtn = document.getElementById('btn-deck-cctv');
+    if (deckCctvBtn) {
+      deckCctvBtn.addEventListener('click', () => {
+        this.openModal();
+      });
+    }
 
     const closeBtn = document.getElementById('btn-close-ai-vision');
     if (closeBtn) closeBtn.addEventListener('click', () => this.closeModal());
@@ -515,6 +512,30 @@ export class VehicleDetector {
       });
     }
 
+    const lineSlider = document.getElementById('ai-line-slider');
+    const lineVal = document.getElementById('ai-line-val');
+    if (lineSlider) {
+      lineSlider.addEventListener('input', (e) => {
+        this.countingLineY = parseFloat(e.target.value) / 100;
+        if (lineVal) lineVal.textContent = `${e.target.value}%`;
+      });
+    }
+
+    // 6b. Interactive Virtual Line Dragging on Canvas
+    if (this.overlayCanvas) {
+      this.overlayCanvas.addEventListener('mousedown', (e) => this.handleCanvasMouseDown(e));
+      window.addEventListener('mousemove', (e) => this.handleCanvasMouseMove(e));
+      window.addEventListener('mouseup', () => this.handleCanvasMouseUp());
+
+      this.overlayCanvas.addEventListener('touchstart', (e) => {
+        if (e.touches && e.touches.length > 0) this.handleCanvasMouseDown(e.touches[0]);
+      }, { passive: true });
+      window.addEventListener('touchmove', (e) => {
+        if (e.touches && e.touches.length > 0 && this.isDraggingLine) this.handleCanvasMouseMove(e.touches[0]);
+      }, { passive: true });
+      window.addEventListener('touchend', () => this.handleCanvasMouseUp());
+    }
+
     // 7. AI Play/Pause Inference Toggle
     const aiToggleBtn = document.getElementById('btn-ai-play-pause');
     if (aiToggleBtn) {
@@ -566,6 +587,7 @@ export class VehicleDetector {
   openModal() {
     if (!this.modal) return;
     this.modal.classList.remove('hidden');
+    document.querySelectorAll('#btn-toggle-ai-vision, #btn-nav-cctv, #btn-cam-cctv, #btn-deck-cctv').forEach(el => el.classList.add('cctv-modal-open'));
 
     if (!this.isModelReady && !this.isLoadingModel) {
       this.loadModel();
@@ -579,6 +601,7 @@ export class VehicleDetector {
   closeModal() {
     if (!this.modal) return;
     this.modal.classList.add('hidden');
+    document.querySelectorAll('#btn-toggle-ai-vision, #btn-nav-cctv, #btn-cam-cctv, #btn-deck-cctv').forEach(el => el.classList.remove('cctv-modal-open'));
     this.stopDetection();
 
     if (this.webcamStream) {
@@ -588,24 +611,15 @@ export class VehicleDetector {
   }
 
   switchSource(sourceKey) {
-    this.currentSource = sourceKey;
+    this.currentSource = 'file';
 
     document.querySelectorAll('.ai-src-btn').forEach(btn => {
-      btn.classList.toggle('active', btn.getAttribute('data-source') === sourceKey);
+      btn.classList.add('active');
     });
 
     if (this.uploadContainer) {
-      if (sourceKey === 'file') {
-        const hasLoadedVideo = this.videoEl && this.videoEl.src && !this.videoEl.srcObject;
-        this.uploadContainer.style.display = hasLoadedVideo ? 'none' : 'flex';
-      } else {
-        this.uploadContainer.style.display = 'none';
-      }
-    }
-
-    if (this.videoEl) {
-      this.videoEl.pause();
-      if (this.videoEl.srcObject) this.videoEl.srcObject = null;
+      const hasLoadedVideo = this.videoEl && this.videoEl.src && !this.videoEl.srcObject;
+      this.uploadContainer.style.display = hasLoadedVideo ? 'none' : 'flex';
     }
 
     if (this.webcamStream) {
@@ -613,27 +627,11 @@ export class VehicleDetector {
       this.webcamStream = null;
     }
 
-    switch (sourceKey) {
-      case 'file':
-        if (this.videoEl && this.videoEl.src && !this.videoEl.srcObject) {
-          this.videoEl.play().catch(() => {});
-          this.startDetection();
-        } else {
-          this.addLogEvent('Silakan pilih file video rekaman CCTV.');
-        }
-        break;
-
-      case 'live3d':
-        this.setupLive3DStream();
-        break;
-
-      case 'demo':
-        this.setupDemoStream();
-        break;
-
-      case 'webcam':
-        this.setupWebcamStream();
-        break;
+    if (this.videoEl && this.videoEl.src && !this.videoEl.srcObject) {
+      this.videoEl.play().catch(() => {});
+      this.startDetection();
+    } else {
+      this.addLogEvent('Silakan pilih file video rekaman CCTV.');
     }
   }
 
@@ -941,12 +939,12 @@ export class VehicleDetector {
     let processedDetections = [];
 
     // Calculate dynamic thresholds:
-    // Motorcycles are smaller and have lower confidence in CCTV -> sensitive threshold
+    // Motorcycles are smaller and have lower confidence in CCTV -> highly sensitive threshold
     const motoThreshold = Math.max(0.04, this.confidenceThreshold * 0.35);
-    const carThreshold = Math.max(0.12, this.confidenceThreshold * 0.65);
+    const carThreshold = Math.max(0.12, this.confidenceThreshold * 0.70);
 
     if (this.engineType === 'yolo' && this.yoloSession) {
-      // 1. Direct High-Speed Resize to 640x640
+      // 1. Direct High-Speed Resize to 640x640 (Native YOLOS/DETR format)
       this.yoloCtx.drawImage(this.videoEl, 0, 0, 640, 640);
 
       const imgData = this.yoloCtx.getImageData(0, 0, 640, 640).data;
@@ -972,16 +970,14 @@ export class VehicleDetector {
 
       if (isYolo26) {
         // ===================================================================
-        // ULTRALYTICS YOLOv26: NMS-FREE END-TO-END DECODER (DUAL-HEAD QUERIES)
+        // ULTRALYTICS YOLOv26: NMS-FREE END-TO-END DECODER (300 DUAL-HEAD QUERIES)
         // ===================================================================
         const logits = results.logits.data;
         const predBoxes = results.pred_boxes.data;
-        const numQueries = results.logits.dims ? results.logits.dims[1] : 300;
-        const numClasses = results.logits.dims ? results.logits.dims[2] : 80;
         const sigmoid = (x) => 1.0 / (1.0 + Math.exp(-x));
 
-        for (let i = 0; i < numQueries; i++) {
-          const off = i * numClasses;
+        for (let i = 0; i < 300; i++) {
+          const off = i * 80;
           const personScore = sigmoid(logits[off + 0]);
           const bicycleScore = sigmoid(logits[off + 1]);
           const carScore = sigmoid(logits[off + 2]);
@@ -992,7 +988,8 @@ export class VehicleDetector {
           const autoScore = Math.max(carScore, busScore, truckScore);
           const twoWheelerScore = Math.max(motoScore, bicycleScore);
 
-          const riderFusion = (twoWheelerScore >= 0.04 && personScore >= 0.06);
+          // Sensitive rider fusion for Indonesian traffic CCTV
+          const riderFusion = (personScore >= 0.08 && (twoWheelerScore >= 0.02 || personScore >= 0.14));
           const effectiveMotoScore = riderFusion
             ? Math.max(twoWheelerScore, personScore * 0.90)
             : twoWheelerScore;
@@ -1011,6 +1008,7 @@ export class VehicleDetector {
           const isTwoWheeler = effectiveMotoScore >= motoThreshold;
           const isAutomobile = autoScore >= carThreshold;
 
+          // Omnidirectional detection for motorcycles:
           if (isTwoWheeler && (effectiveMotoScore >= autoScore * 0.65 || riderFusion || aspectRatio < 1.15)) {
             cls = 'motorcycle';
             score = effectiveMotoScore;
@@ -1026,6 +1024,7 @@ export class VehicleDetector {
           }
 
           if (cls) {
+            // Direct exact scaling to native video pixel coordinates [0..vidW, 0..vidH]
             const realX = Math.max(0, (cx_norm - w_norm / 2) * vidW);
             const realY = Math.max(0, (cy_norm - h_norm / 2) * vidH);
             const realW = Math.min(vidW - realX, w_norm * vidW);
@@ -1040,101 +1039,55 @@ export class VehicleDetector {
         }
       } else if (results.output0) {
         // ===================================================================
-        // ULTRALYTICS YOLOv8: MULTI-SCALE CNN ANCHOR DECODER
+        // ULTRALYTICS YOLOv8: GRID-BASED RAW ANCHOR DECODER (8400 COLS)
         // ===================================================================
-        const output = results.output0;
-        const outputData = output.data;
-        const dims = output.dims || [1, 84, 8400];
-        
-        let numCandidates = 8400;
-        let isTransposed = false;
-        if (dims.length === 3) {
-          if (dims[1] === 84 && dims[2] === 8400) {
-            numCandidates = dims[2];
-            isTransposed = false;
-          } else if (dims[1] === 8400 && dims[2] === 84) {
-            numCandidates = dims[1];
-            isTransposed = true;
-          }
-        }
+        const outputData = results.output0.data;
+        const numCandidates = 8400;
 
         for (let c = 0; c < numCandidates; c++) {
-          let personScore, bicycleScore, carScore, motoScore, busScore, truckScore;
-          let cx_raw, cy_raw, w_raw, h_raw;
-
-          if (!isTransposed) {
-            cx_raw = outputData[0 * numCandidates + c];
-            cy_raw = outputData[1 * numCandidates + c];
-            w_raw = outputData[2 * numCandidates + c];
-            h_raw = outputData[3 * numCandidates + c];
-
-            personScore = outputData[4 * numCandidates + c];
-            bicycleScore = outputData[5 * numCandidates + c];
-            carScore = outputData[6 * numCandidates + c];
-            motoScore = outputData[7 * numCandidates + c];
-            busScore = outputData[9 * numCandidates + c];
-            truckScore = outputData[11 * numCandidates + c];
-          } else {
-            const base = c * 84;
-            cx_raw = outputData[base + 0];
-            cy_raw = outputData[base + 1];
-            w_raw = outputData[base + 2];
-            h_raw = outputData[base + 3];
-
-            personScore = outputData[base + 4];
-            bicycleScore = outputData[base + 5];
-            carScore = outputData[base + 6];
-            motoScore = outputData[base + 7];
-            busScore = outputData[base + 9];
-            truckScore = outputData[base + 11];
-          }
+          const personScore = outputData[4 * numCandidates + c] || 0;
+          const bicycleScore = outputData[5 * numCandidates + c] || 0;
+          const carScore = outputData[6 * numCandidates + c] || 0;
+          const motoScore = outputData[7 * numCandidates + c] || 0;
+          const busScore = outputData[9 * numCandidates + c] || 0;
+          const truckScore = outputData[11 * numCandidates + c] || 0;
 
           const autoScore = Math.max(carScore, busScore, truckScore);
-          const twoWheelerScore = Math.max(motoScore, bicycleScore);
+          const riderBoost = (personScore >= 0.08 && (motoScore >= 0.02 || bicycleScore >= 0.02)) ? Math.max(motoScore, personScore * 0.88) : 0;
+          const twoWheelerScore = Math.max(motoScore, bicycleScore, riderBoost);
 
-          const riderFusion = (twoWheelerScore >= 0.04 && personScore >= 0.06);
-          const effectiveMotoScore = riderFusion 
-            ? Math.max(twoWheelerScore, personScore * 0.90) 
-            : twoWheelerScore;
+          const isTwoWheeler = twoWheelerScore >= motoThreshold;
+          const isCar = autoScore >= carThreshold;
 
-          const aspectRatio = w_raw / Math.max(1, h_raw);
+          if (isTwoWheeler || isCar) {
+            let cls = 'car';
+            let score = autoScore;
 
-          let cls = null;
-          let score = 0;
+            if (isTwoWheeler && (!isCar || twoWheelerScore >= autoScore * 0.70)) {
+              cls = 'motorcycle';
+              score = twoWheelerScore;
+            } else {
+              cls = 'car';
+              score = autoScore;
+            }
 
-          const isTwoWheeler = effectiveMotoScore >= motoThreshold;
-          const isAutomobile = autoScore >= carThreshold;
+            const cx_raw = outputData[0 * numCandidates + c];
+            const cy_raw = outputData[1 * numCandidates + c];
+            const w_raw = outputData[2 * numCandidates + c];
+            const h_raw = outputData[3 * numCandidates + c];
 
-          if (isTwoWheeler && (effectiveMotoScore >= autoScore * 0.65 || riderFusion || aspectRatio < 1.15)) {
-            cls = 'motorcycle';
-            score = effectiveMotoScore;
-          } else if (isAutomobile && (autoScore > effectiveMotoScore || aspectRatio >= 0.70)) {
-            cls = 'car';
-            score = autoScore;
-          } else if (isTwoWheeler) {
-            cls = 'motorcycle';
-            score = effectiveMotoScore;
-          } else if (isAutomobile) {
-            cls = 'car';
-            score = autoScore;
-          }
+            const realX = Math.max(0, (cx_raw - w_raw / 2) * (vidW / 640));
+            const realY = Math.max(0, (cy_raw - h_raw / 2) * (vidH / 640));
+            const realW = Math.min(vidW - realX, w_raw * (vidW / 640));
+            const realH = Math.min(vidH - realY, h_raw * (vidH / 640));
 
-          if (cls) {
-            const cx_norm = cx_raw / 640;
-            const cy_norm = cy_raw / 640;
-            const w_norm = w_raw / 640;
-            const h_norm = h_raw / 640;
-
-            const realX = Math.max(0, (cx_norm - w_norm / 2) * vidW);
-            const realY = Math.max(0, (cy_norm - h_norm / 2) * vidH);
-            const realW = Math.min(vidW - realX, w_norm * vidW);
-            const realH = Math.min(vidH - realY, h_norm * vidH);
-
-            candidates.push({
-              bbox: [realX, realY, realW, realH],
-              score: score,
-              class: cls
-            });
+            if (realW >= 6 && realH >= 6 && realW <= vidW * 0.98 && realH <= vidH * 0.98) {
+              candidates.push({
+                bbox: [realX, realY, realW, realH],
+                score: score,
+                class: cls
+              });
+            }
           }
         }
       }
@@ -1143,12 +1096,12 @@ export class VehicleDetector {
       processedDetections = this.applyNMS(candidates, 0.45);
     } else if (this.fallbackModel) {
       // Fallback engine
-      const predictions = await this.fallbackModel.detect(this.videoEl, 25, motoThreshold);
+      const predictions = await this.fallbackModel.detect(this.videoEl, 30, Math.min(motoThreshold, 0.10));
       for (const p of predictions) {
         let mappedClass = null;
         if ((p.class === 'car' || p.class === 'truck' || p.class === 'bus') && p.score >= carThreshold) {
           mappedClass = 'car';
-        } else if ((p.class === 'motorcycle' || p.class === 'bicycle' || p.class === 'person') && p.score >= motoThreshold) {
+        } else if ((p.class === 'motorcycle' || p.class === 'bicycle') && p.score >= motoThreshold) {
           mappedClass = 'motorcycle';
         }
 
@@ -1351,10 +1304,13 @@ export class VehicleDetector {
         track.lastWallTime = now;
         track.lastSeen = now;
 
-        // Counting: confirmed after 2 frames or initial confidence >= 0.22
-        if (!track.counted) {
-          const totalMove = Math.hypot(cx - (track.initX ?? cx), cy - (track.initY ?? cy));
-          if (track.seenCount >= 2 || totalMove >= 10 || track.score >= 0.22) {
+        // Virtual line crossing check during inference update
+        const lineY = h * this.countingLineY;
+        const prevY = track.cy;
+        if (!track.counted && this.countingLineActive) {
+          const crossedDown = prevY < lineY && cy >= lineY;
+          const crossedUp = prevY > lineY && cy <= lineY;
+          if (crossedDown || crossedUp) {
             track.counted = true;
             this.recordCountEvent(track.class, track.score);
           }
@@ -1388,10 +1344,6 @@ export class VehicleDetector {
           lastWallTime: now,
           counted: false
         };
-        if (pred.score >= 0.22) {
-          newTrack.counted = true;
-          this.recordCountEvent(pred.class, pred.score);
-        }
         this.trackedVehicles.set(newId, newTrack);
       }
     }
@@ -1462,15 +1414,56 @@ export class VehicleDetector {
     const ctx = this.ctx;
     ctx.clearRect(0, 0, vidW, vidH);
 
-    // 1. Render Clean Bounding Boxes (Cuman Kotak Aja, Tanpa Garis!)
+    // 1. Render Virtual Counting Line (Garis Detektor)
+    this.renderCountingLine(vidW, vidH);
+
+    // 2. Render Vehicle Bounding Boxes
     this.renderVehicleBoxes(ctx, vidW, vidH);
 
-    // 2. Update Telemetry HUD
+    // 3. Update Telemetry HUD
     this.updateTelemetryHUD();
+  }
+
+  renderCountingLine(w, h) {
+    if (!this.countingLineActive) return;
+    const ctx = this.ctx;
+    const lineY = h * this.countingLineY;
+    const isFlashing = performance.now() < this.lineFlashUntil;
+
+    ctx.save();
+    ctx.shadowBlur = isFlashing ? 28 : 12;
+    ctx.shadowColor = isFlashing ? '#fde047' : '#38bdf8';
+    ctx.strokeStyle = isFlashing ? '#fef08a' : 'rgba(56, 189, 248, 0.9)';
+    ctx.lineWidth = isFlashing ? 4.5 : 2.5;
+    ctx.setLineDash([14, 8]);
+
+    ctx.beginPath();
+    ctx.moveTo(0, lineY);
+    ctx.lineTo(w, lineY);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Line Label
+    ctx.fillStyle = isFlashing ? '#fef08a' : '#38bdf8';
+    ctx.font = '700 11.5px "JetBrains Mono", monospace';
+    const tagText = isFlashing ? '⚡ KENDARAAN TERHITUNG' : '⮞ GARIS PENGHITUNG KENDARAAN';
+    ctx.fillText(tagText, 18, lineY - 8);
+
+    // Handle Grip Pill at right side
+    ctx.fillStyle = isFlashing ? '#fde047' : '#0284c7';
+    ctx.beginPath();
+    ctx.roundRect(w - 110, lineY - 10, 95, 20, 10);
+    ctx.fill();
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '600 10px "JetBrains Mono", monospace';
+    ctx.fillText('↕ GESER GARIS', w - 102, lineY + 4);
+
+    ctx.restore();
   }
 
   renderVehicleBoxes(ctx, w, h) {
     const now = performance.now();
+    const lineY = h * this.countingLineY;
     const isPlaying = this.videoEl && !this.videoEl.paused;
     const playbackRate = (this.videoEl && this.videoEl.playbackRate) ? this.videoEl.playbackRate : 1.0;
 
@@ -1504,18 +1497,57 @@ export class VehicleDetector {
       const renderX = track.smoothCx - track.smoothW / 2;
       const renderY = track.smoothCy - track.smoothH / 2;
 
+      // Real-time 60 FPS ray-cast virtual line crossing trigger
+      if (!track.counted && this.countingLineActive && isPlaying) {
+        const prevY = track.lastRenderCy ?? track.smoothCy;
+        const crossedDown = prevY < lineY && track.smoothCy >= lineY;
+        const crossedUp = prevY > lineY && track.smoothCy <= lineY;
+        if (crossedDown || crossedUp) {
+          track.counted = true;
+          this.recordCountEvent(track.class, track.score);
+        }
+      }
+      track.lastRenderCy = track.smoothCy;
+
       ctx.save();
 
-      // Clean High-Tech Bounding Box (Cuman Kotak Aja, Tanpa Garis!)
+      // Glowing YOLO Bounding Box
       ctx.shadowColor = color;
-      ctx.shadowBlur = 8;
+      ctx.shadowBlur = 10;
       ctx.strokeStyle = color;
       ctx.lineWidth = 2.5;
       ctx.beginPath();
-      ctx.roundRect(renderX, renderY, track.smoothW, track.smoothH, 4);
+      ctx.roundRect(renderX, renderY, track.smoothW, track.smoothH, 5);
       ctx.stroke();
 
-      // Clean Label Badge on top: Mobil or Sepeda Motor + Confidence %
+      // Corner Brackets
+      const bLen = Math.min(18, track.smoothW * 0.25, track.smoothH * 0.25);
+      ctx.lineWidth = 3.5;
+      ctx.shadowBlur = 14;
+
+      ctx.beginPath();
+      ctx.moveTo(renderX, renderY + bLen); ctx.lineTo(renderX, renderY); ctx.lineTo(renderX + bLen, renderY);
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.moveTo(renderX + track.smoothW - bLen, renderY); ctx.lineTo(renderX + track.smoothW, renderY); ctx.lineTo(renderX + track.smoothW, renderY + bLen);
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.moveTo(renderX, renderY + track.smoothH - bLen); ctx.lineTo(renderX, renderY + track.smoothH); ctx.lineTo(renderX + bLen, renderY + track.smoothH);
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.moveTo(renderX + track.smoothW - bLen, renderY + track.smoothH); ctx.lineTo(renderX + track.smoothW, renderY + track.smoothH); ctx.lineTo(renderX + track.smoothW, renderY + track.smoothH - bLen);
+      ctx.stroke();
+
+      // Centroid Dot
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.arc(track.smoothCx, track.smoothCy, 3.5, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Label Badge on top: Mobil or Sepeda Motor + Confidence %
       const scorePct = `${Math.round(track.score * 100)}%`;
       let speedText = '';
       if (this.showSpeed && (track.vx || track.vy)) {
@@ -1529,20 +1561,20 @@ export class VehicleDetector {
 
       ctx.font = '600 12px "Outfit", sans-serif';
       const textWidth = ctx.measureText(labelText).width;
-      const tagW = textWidth + 14;
-      const tagH = 20;
+      const tagW = textWidth + 16;
+      const tagH = 22;
       const tagX = Math.max(0, renderX);
-      const tagY = renderY > 24 ? renderY - tagH - 2 : renderY + track.smoothH + 2;
+      const tagY = renderY > 26 ? renderY - tagH - 4 : renderY + track.smoothH + 4;
 
       ctx.fillStyle = color;
-      ctx.shadowBlur = 6;
+      ctx.shadowBlur = 8;
       ctx.beginPath();
-      ctx.roundRect(tagX, tagY, tagW, tagH, 3);
+      ctx.roundRect(tagX, tagY, tagW, tagH, 4);
       ctx.fill();
 
       ctx.fillStyle = '#0f172a';
       ctx.shadowBlur = 0;
-      ctx.fillText(labelText, tagX + 7, tagY + 14);
+      ctx.fillText(labelText, tagX + 8, tagY + 15);
 
       ctx.restore();
     }

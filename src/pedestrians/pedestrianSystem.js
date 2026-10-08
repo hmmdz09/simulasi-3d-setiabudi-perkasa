@@ -10,12 +10,15 @@ export class PedestrianSystem {
     // Crossing state & modes: 'normal' | 'tunanetra'
     this.crossingMode = 'normal';
     this.isCrossing = false;
+    this.isAudioAnnouncing = false; // true while playing voice guidance before Tuna Netra crosses
     this.crossingDirection = 1; // 1: East to West (8.5 -> -8.5), -1: West to East
-    this.crossingSpeed = 3.10; // m/s walking speed (crosses 17m in ~5.5 seconds)
+    this.crossingSpeed = 2.70; // m/s walking speed for normal mode (crosses 17m in ~6.3s)
     this.totalCrossingDistance = 17.0; // from X = +8.5 to X = -8.5
 
-    // Active crossing duration: 11 detik (rombongan menyeberang ~5.5s, sisa ~5.5s fase hijau untuk membubarkan diri ke segala arah)
-    this.crossingDuration = 11.0;
+    // Durasi penyeberangan: 10 detik (Normal) & 20 detik (Tuna Netra)
+    this.crossingDurationNormal = 10.0;
+    this.crossingDurationTunaNetra = 20.0;
+    this.crossingDuration = 10.0;
     this.crossingRemaining = 0;
 
     // Delay sebelum rombongan antrean baru muncul di trotoar agar tidak menumpuk dengan orang yang baru menyeberang
@@ -25,6 +28,7 @@ export class PedestrianSystem {
     this.buttonLockdownDuration = 120.0;
     this.buttonLockdownRemaining = 0;
     this.isButtonLocked = false;
+    this.dualRedBypassActive = false; // true if lockdown is bypassed due to Setiabudi & Terusan both RED
 
     // Corridor Green Wave Integration
     this.isGreenWaveBlocking = false;
@@ -146,6 +150,31 @@ export class PedestrianSystem {
       this.executeCrossing(mode);
     } else {
       this.notifyState();
+    }
+  }
+
+  // Khusus: Jika Jalan Setiabudi & Terusan Setiabudi kedua-duanya Merah,
+  // maka masa lockdown di penyeberangan Mupenas seketika dilepas & tombol langsung tersedia!
+  releaseLockdownForDualRed() {
+    if (this.isButtonLocked || this.buttonLockdownRemaining > 0) {
+      this.isButtonLocked = false;
+      this.buttonLockdownRemaining = 0;
+      this.dualRedBypassActive = true;
+
+      // Segera siapkan antrean penyeberang di trotoar jika sebelumnya kosong
+      if (this.systemMode === 'after' && !this.isCrossing && this.waitingQueue.length === 0) {
+        this.initWaitingQueue();
+      }
+
+      // Jika ada permintaan penyeberangan tertunda saat lockdown, jalankan segera
+      if (this.pendingCrossingRequest && !this.isCrossing && !this.isAudioAnnouncing) {
+        this.pendingCrossingRequest = false;
+        const mode = this.pendingCrossingMode || this.crossingMode;
+        this.pendingCrossingMode = null;
+        this.executeCrossing(mode);
+      } else {
+        this.notifyState();
+      }
     }
   }
 
@@ -343,7 +372,7 @@ export class PedestrianSystem {
         destX,
         currentX: standX,
         zPos: standZ,
-        speed: (isTunaNetra ? 2.65 : cfg.speed),
+        speed: (isTunaNetra ? 1.45 : 2.70),
         progress: 0,
         totalDist: Math.abs(destX - standX),
         isTunaNetra,
@@ -577,12 +606,12 @@ export class PedestrianSystem {
       this.waitingQueue[0].isTunaNetra = isTunaNetra;
       if (this.waitingQueue[0].glasses) this.waitingQueue[0].glasses.visible = isTunaNetra;
       if (this.waitingQueue[0].cane) this.waitingQueue[0].cane.visible = isTunaNetra;
-      this.waitingQueue[0].speed = isTunaNetra ? 2.65 : 3.10;
+      this.waitingQueue[0].speed = isTunaNetra ? 1.45 : 2.70;
     }
   }
 
   requestCrossing(mode = null) {
-    if (this.isCrossing || this.isButtonLocked) return false;
+    if (this.isCrossing || this.isAudioAnnouncing || this.isButtonLocked) return false;
 
     if (mode) {
       this.crossingMode = mode;
@@ -610,33 +639,97 @@ export class PedestrianSystem {
   }
 
   executeCrossing(mode) {
-    if (this.isCrossing) return false;
+    if (this.isCrossing || this.isAudioAnnouncing) return false;
 
     this.crossingMode = mode || this.crossingMode;
-    this.isCrossing = true;
-    this.crossingRemaining = this.crossingDuration;
-    this.isButtonLocked = true;
-    this.buttonLockdownRemaining = this.buttonLockdownDuration; // 120 seconds!
+    const isTunaNetra = (this.crossingMode === 'tunanetra');
 
-    // Ensure waiting queue is initialized; if empty, create it now
+    // 2-minute (120s) button cooldown starts, KECUALI jika Setiabudi & Terusan Setiabudi sedang Merah Keduanya!
+    const isDualRedNow = this.trafficSystem && typeof this.trafficSystem.isSetiabudiDualRed === 'function' && this.trafficSystem.isSetiabudiDualRed();
+    if (!isDualRedNow) {
+      this.isButtonLocked = true;
+      this.buttonLockdownRemaining = this.buttonLockdownDuration;
+      this.dualRedBypassActive = false;
+    } else {
+      this.isButtonLocked = false;
+      this.buttonLockdownRemaining = 0;
+      this.dualRedBypassActive = true;
+    }
+
+    // Traffic stops at zebra cross stop line immediately
+    this.trafficSystem.setPedestrianCrossing(true);
+
+    // Ensure waiting queue is initialized on sidewalk
     if (this.waitingQueue.length === 0) {
       this.initWaitingQueue();
     }
 
     // Synchronize tuna netra accessories on lead character
     if (this.waitingQueue[0]) {
-      const isTunaNetra = (this.crossingMode === 'tunanetra');
       this.waitingQueue[0].isTunaNetra = isTunaNetra;
       if (this.waitingQueue[0].glasses) this.waitingQueue[0].glasses.visible = isTunaNetra;
       if (this.waitingQueue[0].cane) this.waitingQueue[0].cane.visible = isTunaNetra;
-      this.waitingQueue[0].speed = isTunaNetra ? 2.65 : 3.10;
+      this.waitingQueue[0].speed = isTunaNetra ? 1.45 : 2.70;
     }
 
-    // Transition waiting queue into active platoon crossing group!
+    if (isTunaNetra) {
+      // 1. FASE AUDIO PANDUAN SUARA:
+      // Karakter Tuna Netra & rombongan DIAM / MENUNGGU di trotoar.
+      // Audio pengumuman bersuara dulu, baru setelah selesai pejalan kaki menyeberang jalan!
+      this.isAudioAnnouncing = true;
+      this.isCrossing = false;
+
+      // Sinyal penyeberangan tetap merah (atau indikator audio) selama suara pengumuman aktif
+      if (this.environment && typeof this.environment.setPedestrianSignalLight === 'function') {
+        this.environment.setPedestrianSignalLight(false);
+      }
+
+      this.notifyState();
+
+      // Bunyikan tactile feedback dan jalankan audio:
+      // "Penyeberangan diterima, silakan menyeberang."
+      this.audio.playButtonFeedback();
+      this.audio.speakCrossingAccepted(() => {
+        // Callback dieksekusi saat audio SELESAI
+        if (!this.isAudioAnnouncing) return; // jika di-reset/dibatalkan
+        this.isAudioAnnouncing = false;
+        // Audio selesai -> mulai menyeberang dengan lampu hijau 20 detik!
+        this.startActiveCrossingGroup('tunanetra');
+      });
+
+      return true;
+    } else {
+      // Mode Normal: langsung mulai menyeberang dengan lampu hijau 10 detik!
+      this.startActiveCrossingGroup('normal');
+      return true;
+    }
+  }
+
+  startActiveCrossingGroup(mode) {
+    this.crossingMode = mode || this.crossingMode;
+    this.isCrossing = true;
+    this.isAudioAnnouncing = false;
+    const isTunaNetra = (this.crossingMode === 'tunanetra');
+
+    // Durasi penyeberangan: 10s untuk Normal, 20s untuk Tuna Netra
+    this.crossingDuration = isTunaNetra ? this.crossingDurationTunaNetra : this.crossingDurationNormal;
+    this.crossingRemaining = this.crossingDuration;
+
+    if (this.waitingQueue.length === 0) {
+      this.initWaitingQueue();
+    }
+
+    if (this.waitingQueue[0]) {
+      this.waitingQueue[0].isTunaNetra = isTunaNetra;
+      if (this.waitingQueue[0].glasses) this.waitingQueue[0].glasses.visible = isTunaNetra;
+      if (this.waitingQueue[0].cane) this.waitingQueue[0].cane.visible = isTunaNetra;
+      this.waitingQueue[0].speed = isTunaNetra ? 1.45 : 2.70;
+    }
+
+    // Pindahkan antrean trotoar menjadi rombongan menyeberang aktif
     this.activeCrossingGroup = [...this.waitingQueue];
     this.waitingQueue = [];
 
-    // Recompute exact totalDist for each person from their starting curb
     const isEastToWest = this.crossingDirection === 1;
     const destX = isEastToWest ? -8.8 : 8.8;
     for (const p of this.activeCrossingGroup) {
@@ -645,30 +738,26 @@ export class PedestrianSystem {
       p.currentX = p.startX;
       p.destX = destX;
       p.totalDist = Math.abs(destX - p.startX);
+      p.speed = p.isTunaNetra ? 1.45 : 2.70;
     }
 
-    // Hide legacy single mesh
     if (this.pedestrianMesh) this.pedestrianMesh.visible = false;
+    this.crossingSpeed = isTunaNetra ? 1.45 : 2.70;
 
-    // Adjust walking speed: 17 meters crossed briskly within 5 - 7 seconds
-    this.crossingSpeed = (this.crossingMode === 'tunanetra') ? 2.65 : 3.10;
-
-    // 1. Notify traffic system to stop approaching vehicles for zebra cross
+    // Pastikan arus kendaraan berhenti
     this.trafficSystem.setPedestrianCrossing(true);
 
-    // 2. Switch 3D Pelican Signal lights to GREEN
+    // Lampu Pelican 3D berganti ke HIJAU
     if (this.environment && typeof this.environment.setPedestrianSignalLight === 'function') {
       this.environment.setPedestrianSignalLight(true);
     }
 
-    // 3. Audio & Voice Guidance for Tuna Netra
-    if (this.crossingMode === 'tunanetra') {
-      this.audio.playButtonFeedback();
-      this.audio.startCrossingAudio(() => this.getRemainingCrossingSeconds(), true);
+    // Untuk Tuna Netra: Aktifkan sinyal akustik bip pelican selama 20 detik waktu penyeberangan
+    if (isTunaNetra) {
+      this.audio.startCrossingAudio(() => this.getRemainingCrossingSeconds(), false);
     }
 
     this.notifyState();
-    return true;
   }
 
   cancelCrossing() {
@@ -676,10 +765,18 @@ export class PedestrianSystem {
     this.buttonLockdownRemaining = 0;
     this.pendingCrossingRequest = false;
     this.pendingCrossingMode = null;
+    this.isAudioAnnouncing = false;
+    this.audio.stopCrossingAudio(false);
+    this.audio.stopVoice();
+
     if (this.isCrossing) {
       this.crossingRemaining = 0;
       this.finishCrossing();
     } else {
+      this.trafficSystem.setPedestrianCrossing(false);
+      if (this.environment && typeof this.environment.setPedestrianSignalLight === 'function') {
+        this.environment.setPedestrianSignalLight(false);
+      }
       if (this.systemMode === 'after' && this.waitingQueue.length === 0) {
         this.initWaitingQueue();
       }
@@ -721,6 +818,17 @@ export class PedestrianSystem {
     // Stop acoustic audio
     if (this.crossingMode === 'tunanetra') {
       this.audio.stopCrossingAudio(true);
+    }
+
+    // Jika Setiabudi & Terusan Setiabudi saat ini Merah Keduanya, lockdown dilepas seketika & antrean siap!
+    const isDualRedFinish = this.trafficSystem && typeof this.trafficSystem.isSetiabudiDualRed === 'function' && this.trafficSystem.isSetiabudiDualRed();
+    if (isDualRedFinish) {
+      this.isButtonLocked = false;
+      this.buttonLockdownRemaining = 0;
+      this.dualRedBypassActive = true;
+      if (this.systemMode === 'after' && this.waitingQueue.length === 0) {
+        this.initWaitingQueue();
+      }
     }
 
     this.notifyState();
@@ -1106,6 +1214,9 @@ export class PedestrianSystem {
         remaining: this.getRemainingGreenWaveSeconds(),
         isPending: this.pendingCrossingRequest
       };
+      const audioAnnounceInfo = {
+        isAnnouncing: this.isAudioAnnouncing
+      };
       const empiricalInfo = {
         systemMode: this.systemMode,
         currentSession: this.getCurrentSession(),
@@ -1115,6 +1226,10 @@ export class PedestrianSystem {
         activePlatoonCount: (this.activeCrossingGroup ? this.activeCrossingGroup.length : 0) + (this.dispersingPedestrians ? this.dispersingPedestrians.length : 0),
         platoonTargetSize: this.getPlatoonTargetSize()
       };
+      const dualRedInfo = {
+        isDualRed: this.trafficSystem && typeof this.trafficSystem.isSetiabudiDualRed === 'function' ? this.trafficSystem.isSetiabudiDualRed() : false,
+        dualRedBypassActive: this.dualRedBypassActive
+      };
       this.onStateChange(
         this.isCrossing,
         this.isButtonLocked,
@@ -1122,13 +1237,24 @@ export class PedestrianSystem {
         this.getRemainingLockdownSeconds(),
         this.crossingMode,
         greenWaveInfo,
-        empiricalInfo
+        empiricalInfo,
+        audioAnnounceInfo,
+        dualRedInfo
       );
     }
   }
 
   update(dt, time) {
     let stateChanged = false;
+
+    // Cek sinkronisasi Dual-Red Simpang 3:
+    // Jika Setiabudi & Terusan Setiabudi sedang Merah Keduanya, lockdown Mupenas seketika dilepas!
+    const isDualRed = this.trafficSystem && typeof this.trafficSystem.isSetiabudiDualRed === 'function' && this.trafficSystem.isSetiabudiDualRed();
+    this.dualRedBypassActive = isDualRed;
+    if (isDualRed && (this.isButtonLocked || this.buttonLockdownRemaining > 0)) {
+      this.releaseLockdownForDualRed();
+      stateChanged = true;
+    }
 
     // Handle autonomous pedestrians in 'before' mode
     if (this.systemMode === 'before') {

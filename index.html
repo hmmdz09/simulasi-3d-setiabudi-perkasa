@@ -33,115 +33,157 @@
   <!-- FLOATING GLASSMORPHISM HUD OVERLAY -->
   <div class="hud-overlay">
     
-    <!-- TOP HEADER BAR (UNIFIED ZERO-COLLISION NAVBAR) -->
-    <header class="top-header glass-panel">
-      <div class="header-left">
-        <!-- Toggle button integrated directly inside the top header -->
-        <button class="deck-toggle-btn" id="btn-toggle-deck" title="Sembunyikan / Tampilkan Panel Kontrol (Shortcut: H)">
-          <i class="fa-solid fa-chevron-left" id="icon-toggle-deck"></i>
-          <span id="text-toggle-deck">Panel (H)</span>
-        </button>
+    <div class="hud-top-region">
+      <!-- TOP HEADER BAR (BARIS ATAS: BRANDING, NAVIGASI, PILIHAN SISTEM, SIANG/MALAM, STATUS) -->
+      <header class="top-header glass-panel">
+        <div class="header-left">
+          <!-- Toggle button integrated directly inside the top header -->
+          <button class="deck-toggle-btn" id="btn-toggle-deck" title="Sembunyikan / Tampilkan Panel Kontrol (Shortcut: H)">
+            <i class="fa-solid fa-chevron-left" id="icon-toggle-deck"></i>
+            <span id="text-toggle-deck">Panel (H)</span>
+          </button>
 
-        <div class="header-vsep"></div>
+          <div class="header-vsep"></div>
 
-        <div class="header-branding">
-          <!-- Academic Identity Logos (UPI, FPMIPA, PENDIKFIS) -->
-          <div class="academic-logos" title="Pendidikan Fisika (PENDIKFIS) • FPMIPA • Universitas Pendidikan Indonesia">
-            <img src="/logo/logo-upi.png" alt="Logo UPI" class="academic-logo-img logo-upi" title="Universitas Pendidikan Indonesia (The Education University)">
-            <img src="/logo/logo-fpmipa.png" alt="Logo FPMIPA" class="academic-logo-img logo-fpmipa" title="FPMIPA UPI">
-            <img src="/logo/logo-pendikfis.png" alt="Logo PENDIKFIS" class="academic-logo-img logo-pendikfis" title="Pendidikan Fisika Universitas Pendidikan Indonesia">
+          <div class="header-branding">
+            <!-- Academic Identity Logos (UPI, FPMIPA, PENDIKFIS) -->
+            <div class="academic-logos" title="Pendidikan Fisika (PENDIKFIS) • FPMIPA • Universitas Pendidikan Indonesia">
+              <img src="/logo/logo-upi.png" alt="Logo UPI" class="academic-logo-img logo-upi" title="Universitas Pendidikan Indonesia (The Education University)">
+              <img src="/logo/logo-fpmipa.png" alt="Logo FPMIPA" class="academic-logo-img logo-fpmipa" title="FPMIPA UPI">
+              <img src="/logo/logo-pendikfis.png" alt="Logo PENDIKFIS" class="academic-logo-img logo-pendikfis" title="Pendidikan Fisika Universitas Pendidikan Indonesia">
+            </div>
+
+            <div class="brand-text">
+              <div class="project-tag">
+                <span class="course-badge" title="Mata Kuliah: MSTR Untuk Pembangunan Berkelanjutan"><i class="fa-solid fa-graduation-cap"></i> MSTR UNTUK PEMBANGUNAN BERKELANJUTAN</span>
+                <span class="corridor-roads">PENDIKFIS • FPMIPA UPI</span>
+              </div>
+              <h1>Simulasi 3D Simpang Setiabudi – Jl. Perkasa</h1>
+            </div>
           </div>
 
-          <div class="brand-text">
-            <div class="project-tag">
-              <span class="course-badge" title="Mata Kuliah: MSTR Untuk Pembangunan Berkelanjutan"><i class="fa-solid fa-graduation-cap"></i> MSTR UNTUK PEMBANGUNAN BERKELANJUTAN</span>
-              <span class="corridor-roads">PENDIKFIS • FPMIPA UPI</span>
-            </div>
-            <h1>Simulasi 3D Simpang Setiabudi – Jl. Perkasa</h1>
+          <div class="header-vsep"></div>
+
+          <!-- MAIN PAGE NAVIGATION TABS: SIMULASI | PROFILE | HASIL -->
+          <nav class="main-page-nav" id="main-page-nav" role="tablist" aria-label="Navigasi Halaman Utama">
+            <button class="page-nav-btn active" data-page="simulasi" id="btn-nav-simulasi" type="button" title="Halaman Utama Simulasi 3D">
+              <i class="fa-solid fa-cube"></i>
+              <span>Simulasi</span>
+            </button>
+            <button class="page-nav-btn" data-page="profile" id="btn-nav-profile" type="button" title="Profil Tim Pengembang MSTR">
+              <i class="fa-solid fa-users"></i>
+              <span>Profile</span>
+              <span class="page-nav-badge">TIM</span>
+            </button>
+            <button class="page-nav-btn" data-page="hasil" id="btn-nav-hasil" type="button" title="Data Hasil Pengujian & Analisis">
+              <i class="fa-solid fa-chart-column"></i>
+              <span>Hasil</span>
+            </button>
+          </nav>
+        </div>
+
+        <!-- 2 PILIHAN SISTEM: PAKE SISTEM VS TANPA SISTEM (TOP HEADER DOCK) -->
+        <div class="system-choice-dock" id="system-choice-dock" role="tablist" aria-label="Mode Sistem Penyeberangan">
+          <button class="sys-choice-btn active" id="btn-sys-after" data-sys="after" type="button" title="Simulasi Dengan Sistem Penyeberangan & Pagar Pembatas">
+            <i class="fa-solid fa-shield-halved"></i>
+            <span>Pake Sistem</span>
+          </button>
+          <button class="sys-choice-btn" id="btn-sys-before" data-sys="before" type="button" title="Simulasi Kondisi Awal: Tanpa Sistem & Tanpa Pagar (Menyebrang Sembarangan)">
+            <i class="fa-solid fa-triangle-exclamation"></i>
+            <span>Tanpa Sistem</span>
+          </button>
+        </div>
+
+        <div class="header-actions">
+          <!-- Quick Day/Sunset/Night Toggle in Header -->
+          <div class="dock-lighting-group" title="Waktu & Pencahayaan">
+            <button class="light-btn active" data-mode="day" title="Siang Terang">
+              <i class="fa-solid fa-sun"></i>
+              <span>Siang</span>
+            </button>
+            <button class="light-btn" data-mode="sunset" title="Sore / Golden Hour">
+              <i class="fa-solid fa-cloud-sun"></i>
+              <span>Sore</span>
+            </button>
+            <button class="light-btn" data-mode="night" title="Malam Lampu Kota">
+              <i class="fa-solid fa-moon"></i>
+              <span>Malam</span>
+            </button>
+          </div>
+
+          <div class="header-vsep"></div>
+
+          <div class="status-pill simpang-apill-pill" id="simpang-apill-badge" title="Siklus Lampu Merah Simpang 3 Setiabudi – Terusan – Sersan Bajuri">
+            <i class="fa-solid fa-traffic-light" id="simpang-apill-icon" style="color: #10b981;"></i>
+            <span id="simpang-apill-text">Setiabudi 🟢 80s | Bajuri 🔴 80s</span>
+          </div>
+
+          <div class="status-pill" id="zebra-status-badge">
+            <span class="pulse-dot"></span>
+            <span>Koridor Normal</span>
+          </div>
+
+          <div class="time-badge" id="hud-clock">
+            <i class="fa-regular fa-clock"></i> <span>07:45 WIB</span>
           </div>
         </div>
-      </div>
+      </header>
 
-      <!-- 2 PILIHAN SISTEM: PAKE SISTEM VS TANPA SISTEM (TOP HEADER DOCK) -->
-      <div class="system-choice-dock" id="system-choice-dock" role="tablist" aria-label="Mode Sistem Penyeberangan">
-        <button class="sys-choice-btn active" id="btn-sys-after" data-sys="after" type="button" title="Simulasi Dengan Sistem Penyeberangan & Pagar Pembatas">
-          <i class="fa-solid fa-shield-halved"></i>
-          <span>Pake Sistem</span>
-        </button>
-        <button class="sys-choice-btn" id="btn-sys-before" data-sys="before" type="button" title="Simulasi Kondisi Awal: Tanpa Sistem & Tanpa Pagar (Menyebrang Sembarangan)">
-          <i class="fa-solid fa-triangle-exclamation"></i>
-          <span>Tanpa Sistem</span>
-        </button>
-      </div>
-
-      <!-- COMPACT CAMERA SELECTOR DOCK (CENTER OF TOP NAVBAR) -->
-      <nav class="camera-dock" aria-label="Mode Kamera">
+      <!-- BARIS KEDUA: POV KAMERA DOCK (FLOATING SECOND ROW SUB-BAR) -->
+      <nav class="camera-dock-row2 glass-panel" id="camera-dock-row2" aria-label="Mode POV Kamera">
+        <div class="cam-dock-label">
+          <i class="fa-solid fa-video"></i>
+          <span>POV Kamera</span>
+        </div>
         <div class="cam-button-group">
           <button class="cam-btn active" data-cam="drone" id="btn-cam-drone" title="Drone View (Isometrik Luas)">
             <i class="fa-solid fa-helicopter"></i>
+            <span>Drone View</span>
           </button>
           <button class="cam-btn" data-cam="orbit" id="btn-cam-orbit" title="Free Orbit (Jelajah 360° Bebas)">
             <i class="fa-solid fa-globe"></i>
+            <span>Orbit 360°</span>
           </button>
           <button class="cam-btn" data-cam="chase" id="btn-cam-chase" title="Chase Cam (Ikuti Kendaraan)">
             <i class="fa-solid fa-car-side"></i>
+            <span>Chase Mobil</span>
           </button>
           <button class="cam-btn" data-cam="zebra" id="btn-cam-zebra" title="Zebra Cross (Trotoar Penyeberangan)">
             <i class="fa-solid fa-person-walking"></i>
+            <span>Zebra Cross</span>
           </button>
           <button class="cam-btn" data-cam="upi" id="btn-cam-upi" title="Gerbang Kampus UPI">
             <i class="fa-solid fa-landmark"></i>
+            <span>Gerbang UPI</span>
           </button>
           <button class="cam-btn" data-cam="simpang" id="btn-cam-simpang" title="Simpang 3 Sersan Bajuri">
             <i class="fa-solid fa-traffic-light"></i>
+            <span>Simpang 3</span>
           </button>
         </div>
       </nav>
-
-      <div class="header-actions">
-        <!-- Quick Day/Sunset/Night Toggle in Header -->
-        <div class="dock-lighting-group" title="Waktu & Pencahayaan">
-          <button class="light-btn active" data-mode="day" title="Siang Terang">
-            <i class="fa-solid fa-sun"></i>
-          </button>
-          <button class="light-btn" data-mode="sunset" title="Sore / Golden Hour">
-            <i class="fa-solid fa-cloud-sun"></i>
-          </button>
-          <button class="light-btn" data-mode="night" title="Malam Lampu Kota">
-            <i class="fa-solid fa-moon"></i>
-          </button>
-        </div>
-
-        <div class="header-vsep"></div>
-
-        <!-- AI VISION CCTV DETECTION BUTTON -->
-        <button class="ai-vision-nav-btn" id="btn-toggle-ai-vision" title="Buka Deteksi Kendaraan AI CCTV (Computer Vision dengan Input Video)">
-          <i class="fa-solid fa-brain"></i>
-          <span>AI Vision CCTV</span>
-          <span class="ai-badge-pill">AI LIVE</span>
-        </button>
-
-        <div class="header-vsep"></div>
-
-        <div class="status-pill simpang-apill-pill" id="simpang-apill-badge" title="Siklus Lampu Merah Simpang 3 Setiabudi – Terusan – Sersan Bajuri">
-          <i class="fa-solid fa-traffic-light" id="simpang-apill-icon" style="color: #10b981;"></i>
-          <span id="simpang-apill-text">Setiabudi 🟢 80s | Bajuri 🔴 80s</span>
-        </div>
-
-        <div class="status-pill" id="zebra-status-badge">
-          <span class="pulse-dot"></span>
-          <span>Koridor Normal</span>
-        </div>
-
-        <div class="time-badge" id="hud-clock">
-          <i class="fa-regular fa-clock"></i> <span>07:45 WIB</span>
-        </div>
-      </div>
-    </header>
+    </div>
 
     <!-- MAIN INTERACTIVE SIDE DECK -->
     <aside class="control-deck" id="control-deck">
       
+      <!-- QUICK CCTV LAUNCHER WIDGET -->
+      <div class="deck-cctv-tile" id="btn-deck-cctv" title="Buka Deteksi Kendaraan AI CCTV (YOLOv8)">
+        <div class="deck-cctv-left">
+          <div class="deck-cctv-icon-wrap">
+            <i class="fa-solid fa-video"></i>
+          </div>
+          <div class="deck-cctv-text">
+            <strong>AI Vision CCTV Detector</strong>
+            <span>YOLOv8 • Mobil & Motor (Upload Video)</span>
+          </div>
+        </div>
+        <div class="deck-cctv-action">
+          <span class="deck-cctv-pill"><span class="cctv-dot-live"></span>LIVE</span>
+          <span class="deck-cctv-open-btn">Buka <i class="fa-solid fa-arrow-up-right-from-square"></i></span>
+        </div>
+      </div>
+
       <!-- CARD 1: KONTROL PENYEBERANGAN (SIMULASI ZEBRA CROSS) -->
       <section class="deck-card glass-panel" id="card-crossing-control">
         <div class="card-header">
@@ -173,7 +215,7 @@
                 </div>
                 <div class="mode-meta">
                   <strong class="mode-title">Mode Normal</strong>
-                  <span class="mode-sub">Lampu hijau 15s • Tombol terkunci 120s (2 mnt)</span>
+                  <span class="mode-sub">Lampu hijau 10s • Tombol terkunci 120s (2 mnt)</span>
                 </div>
               </button>
 
@@ -183,7 +225,7 @@
                 </div>
                 <div class="mode-meta">
                   <strong class="mode-title">Mode Tuna Netra</strong>
-                  <span class="mode-sub">Panduan vokal & sinyal akustik bip pelican</span>
+                  <span class="mode-sub">Lampu hijau 20s • Panduan vokal & sinyal akustik</span>
                 </div>
               </button>
             </div>
@@ -203,7 +245,7 @@
               <div class="signal-title" id="signal-title">Sinyal Kendaraan: Melaju Normal</div>
               <div class="signal-subtitle" id="signal-subtitle">Tekan tombol di bawah untuk meminta lampu hijau menyebrang</div>
             </div>
-            <div class="signal-countdown" id="signal-countdown" style="display: none;">15s</div>
+            <div class="signal-countdown" id="signal-countdown" style="display: none;">10s</div>
           </div>
 
           <!-- LIVE AUDIO WAVE EQUALIZER FOR TUNA NETRA -->
@@ -259,6 +301,26 @@
             </div>
             <div class="survey-note">
               <i class="fa-solid fa-shield-halved text-green"></i> <strong>100% Tertib Terpusat</strong> di Pelican Mupenas (Eks-Ilegal + Mupenas bergabung jadi satu antrean)
+            </div>
+          </div>
+
+          <!-- KARTU SINKRONISASI APILL SIMPANG 3 DUAL-RED & MUPENAS BYPASS -->
+          <div class="simpang-dual-red-card" id="simpang-dual-red-card">
+            <div class="dual-red-header">
+              <div class="dual-red-title">
+                <i class="fa-solid fa-code-branch text-amber"></i>
+                <strong>Sinkronisasi Simpang 3 & Mupenas</strong>
+              </div>
+              <span class="dual-red-badge badge-green" id="dual-red-badge-indicator">Setiabudi Hijau</span>
+            </div>
+            <div class="dual-red-status-text" id="dual-red-status-desc">
+              Jika Jl. Setiabudi & Terusan Setiabudi kedua-duanya <strong>Lampu Merah</strong>, tombol penyeberangan Mupenas <strong>langsung tersedia</strong> (lockdown otomatis dilepas).
+            </div>
+            <div class="dual-red-action-bar">
+              <button type="button" class="btn-toggle-dual-red" id="btn-toggle-dual-red" title="Simulasikan Lampu Merah Keduanya di Simpang 3">
+                <i class="fa-solid fa-traffic-light"></i>
+                <span id="btn-toggle-dual-red-text">Simulasikan Merah Keduanya (Bypass)</span>
+              </button>
             </div>
           </div>
 
@@ -500,14 +562,14 @@
           </div>
           <div>
             <h2 id="ai-modal-title">YOLO AI Vision • Deteksi Kendaraan CCTV</h2>
-            <p class="ai-header-subtitle">Deteksi otomatis Kendaraan (Mobil & Sepeda Motor) berbasis Ultralytics YOLOv26 (NMS-Free End-to-End)</p>
+            <p class="ai-header-subtitle">Deteksi otomatis Kendaraan (Mobil & Sepeda Motor) berbasis Ultralytics YOLOv8 Nano</p>
           </div>
         </div>
         
         <div class="ai-header-right">
           <div class="ai-status-pill" id="ai-status-badge">
             <span class="ai-status-dot dot-loading"></span>
-            <span>Memuat Model AI...</span>
+            <span>Memuat Model YOLOv8...</span>
           </div>
           <button class="ai-close-btn" id="btn-close-ai-vision" title="Tutup Modal (Esc)">
             <i class="fa-solid fa-xmark"></i>
@@ -534,9 +596,8 @@
               </div>
             </div>
 
-
-            <!-- File Upload Dropzone Prompt (shown only when in 'file' source mode and no video is active) -->
-            <div class="ai-upload-prompt" id="ai-upload-container" style="display: none;">
+            <!-- File Upload Dropzone Prompt (Upload-only source) -->
+            <div class="ai-upload-prompt" id="ai-upload-container">
               <i class="fa-solid fa-cloud-arrow-up upload-big-icon"></i>
               <h3>Unggah Rekaman Video CCTV Lalu Lintas</h3>
               <p>Format: MP4, WebM, MOV. Anda juga dapat <strong>menyeret (drag & drop)</strong> file video langsung ke area ini.</p>
@@ -594,41 +655,19 @@
           </div>
         </div>
 
-        <!-- Right Column: Settings, Counter Cards & Event Stream -->
+        <!-- Right Column: Settings & Counter Cards -->
         <div class="ai-sidebar-card">
           
-          <!-- 0. AI Model Selector (YOLOv26 vs YOLOv8 Nano) -->
+          <!-- 1. Source Input (Unggah File Video) -->
           <div class="ai-section">
             <div class="ai-section-header-flex">
-              <label class="ai-section-title"><i class="fa-solid fa-microchip"></i> Arsitektur Model AI:</label>
-              <span class="ai-badge-total" id="ai-active-model-tag">Worker 60 FPS</span>
+              <label class="ai-section-title"><i class="fa-solid fa-video"></i> Sumber Input Video:</label>
+              <span class="ai-badge-total" id="ai-active-model-tag">YOLOv8 Nano</span>
             </div>
-            <div class="ai-model-tabs" role="tablist">
-              <button class="ai-model-btn active" data-model="yolov26" id="btn-model-yolo26" title="Ultralytics YOLOv26 Nano End-to-End (NMS-Free Transformer)">
-                <i class="fa-solid fa-bolt"></i> YOLOv26 (NMS-Free)
-              </button>
-              <button class="ai-model-btn" data-model="yolov8" id="btn-model-yolo8" title="Ultralytics YOLOv8 Nano - Sangat Responsif & Akurat untuk Motor & Mobil CCTV Sudut Jauh">
-                <i class="fa-solid fa-bullseye"></i> YOLOv8 (Rekomendasi CCTV)
-              </button>
-            </div>
-          </div>
-
-          <!-- 1. Source Switcher -->
-          <div class="ai-section">
-            <label class="ai-section-title"><i class="fa-solid fa-video"></i> Sumber Input Video:</label>
             <div class="ai-source-tabs" role="tablist">
-              <button class="ai-src-btn" data-source="file" title="Unggah File Rekaman CCTV Sendiri">
-                <i class="fa-solid fa-upload"></i> Unggah File
-              </button>
-              <button class="ai-src-btn active" data-source="live3d" title="Feed Langsung dari Kamera 3D Simulasi">
-                <i class="fa-solid fa-cube"></i> Simulasi 3D
-              </button>
-              <button class="ai-src-btn" data-source="demo" title="Rekaman Simulasi CCTV Simpang Setiabudi">
-                <i class="fa-solid fa-film"></i> CCTV Demo
-              </button>
-              <button class="ai-src-btn" data-source="webcam" title="Kamera Langsung / Webcam">
-                <i class="fa-solid fa-camera-web"></i> Webcam
-              </button>
+              <label for="ai-file-input" class="ai-src-btn active" data-source="file" style="cursor: pointer; text-align: center; width: 100%; display: flex; justify-content: center; align-items: center; gap: 8px;" title="Unggah File Rekaman CCTV">
+                <i class="fa-solid fa-cloud-arrow-up"></i> Unggah File Rekaman CCTV (MP4 / WebM)
+              </label>
             </div>
           </div>
 
@@ -687,19 +726,18 @@
               <input type="range" id="ai-conf-slider" min="5" max="50" value="18" class="ai-range-input">
             </div>
 
-            <div class="ai-info-pill-note">
-              <i class="fa-solid fa-square-check text-green"></i>
-              <span><strong>Mode Kotak Bersih (Tanpa Garis)</strong>: Setiap kendaraan (Mobil & Motor) yang melintas otomatis dihitung secara akurat tanpa terhalang garis.</span>
-            </div>
-          </div>
-
-          <!-- 4. Detection Event Stream Log -->
-          <div class="ai-section ai-events-section">
-            <label class="ai-section-title"><i class="fa-solid fa-list-check"></i> Log Deteksi Real-time:</label>
-            <div class="ai-event-stream" id="ai-event-stream">
-              <div class="ai-log-entry ai-log-placeholder">
-                <span>Menunggu kendaraan melintas di kamera...</span>
+            <!-- Slider Posisi Garis Detektor -->
+            <div class="ai-slider-row">
+              <div class="slider-meta">
+                <span>Posisi Garis Detektor:</span>
+                <strong id="ai-line-val">55%</strong>
               </div>
+              <input type="range" id="ai-line-slider" min="15" max="85" value="55" class="ai-range-input">
+            </div>
+
+            <div class="ai-info-pill-note">
+              <i class="fa-solid fa-traffic-light text-cyan"></i>
+              <span><strong>Garis Detektor Aktif</strong>: Kendaraan (Mobil & Motor) yang melintasi garis otomatis terhitung dengan akurat. Garis dapat digeser langsung di layar video atau lewat slider.</span>
             </div>
           </div>
 
@@ -708,6 +746,373 @@
 
     </div>
   </div>
+
+  <!-- =========================================================================
+       PROFILE VIEW: TIM PENGEMBANG MSTR
+       ========================================================================= -->
+  <section class="page-overlay-view" id="view-profile" style="display: none;">
+    <div class="page-view-container">
+      <div class="profile-hero-header">
+        <div class="profile-hero-badge">
+          <i class="fa-solid fa-graduation-cap text-cyan"></i>
+          <span>MATA KULIAH MSTR UNTUK PEMBANGUNAN BERKELANJUTAN • PENDIDIKAN FISIKA FPMIPA UPI</span>
+        </div>
+        <h1 class="profile-title">Profil Tim Pengembang</h1>
+        <p class="profile-subtitle">
+          Kolaborasi multidisiplin dalam perancangan rekayasa lalu lintas berkelanjutan di Simpang Setiabudi – Jl. Perkasa, mengintegrasikan Computer Vision YOLOv8 dan sistem sinyal penyeberangan ramah disabilitas (Tuna Netra).
+        </p>
+
+        <div class="profile-stats-bar">
+          <div class="profile-stat-item">
+            <span class="stat-number">4</span>
+            <span class="stat-label">Anggota Tim</span>
+          </div>
+          <div class="profile-stat-sep"></div>
+          <div class="profile-stat-item">
+            <span class="stat-number">SDGs 11</span>
+            <span class="stat-label">Kota & Komunitas Berkelanjutan</span>
+          </div>
+          <div class="profile-stat-sep"></div>
+          <div class="profile-stat-item">
+            <span class="stat-number">APS 3D</span>
+            <span class="stat-label">Sinyal Akustik Tuna Netra</span>
+          </div>
+          <div class="profile-stat-sep"></div>
+          <div class="profile-stat-item">
+            <span class="stat-number">YOLOv8</span>
+            <span class="stat-label">Deteksi AI CCTV Realtime</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 4 TEAM MEMBER CARDS -->
+      <div class="team-cards-grid">
+        <!-- CARD 1: M. HAMDI (PROJECT LEADER) -->
+        <article class="team-card leader-card" data-member="hamdi">
+          <div class="card-glow-accent glow-cyan"></div>
+          <div class="team-avatar-wrapper">
+            <img src="/team/hamdi.jpeg" alt="M. Hamdi" class="team-avatar-img">
+            <div class="avatar-ring ring-cyan"></div>
+            <div class="avatar-status-pill leader-pill"><i class="fa-solid fa-crown"></i></div>
+          </div>
+          <div class="team-card-body">
+            <div class="team-role-pill role-leader">
+              <i class="fa-solid fa-crown"></i>
+              <span>Project Leader</span>
+            </div>
+            <h2 class="team-member-name">M. Hamdi</h2>
+            <span class="team-member-title">Lead Developer & System Architect</span>
+            <p class="team-member-desc">
+              Memimpin perencanaan arsitektur proyek, pengembangan simulasi 3D interaktif Three.js, integrasi inferensi AI Vision YOLOv8 CCTV, serta rekayasa sistem sinyal akustik Pelican ramah disabilitas.
+            </p>
+            <div class="team-tags-list">
+              <span class="member-tag">Project Lead</span>
+              <span class="member-tag">Three.js 3D</span>
+              <span class="member-tag">YOLOv8 AI</span>
+              <span class="member-tag">Acoustic Signal</span>
+            </div>
+          </div>
+        </article>
+
+        <!-- CARD 2: MUHAMMAD ZALALLUDIN (OBSERVER) -->
+        <article class="team-card observer-card" data-member="zalal">
+          <div class="card-glow-accent glow-emerald"></div>
+          <div class="team-avatar-wrapper">
+            <img src="/team/zalal.jpeg" alt="Muhammad Zalalludin" class="team-avatar-img">
+            <div class="avatar-ring ring-emerald"></div>
+            <div class="avatar-status-pill observer-pill"><i class="fa-solid fa-binoculars"></i></div>
+          </div>
+          <div class="team-card-body">
+            <div class="team-role-pill role-observer">
+              <i class="fa-solid fa-binoculars"></i>
+              <span>Observer</span>
+            </div>
+            <h2 class="team-member-name">Muhammad Zalalludin</h2>
+            <span class="team-member-title">Field Traffic Observer & Data Acquisition</span>
+            <p class="team-member-desc">
+              Melaksanakan survei primer lapangan di Simpang Setiabudi – Jl. Perkasa, mengobservasi perilaku penyeberang sembarangan, mencatat volume kendaraan sesi pagi & sore, serta memetakan titik rawan konflik.
+            </p>
+            <div class="team-tags-list">
+              <span class="member-tag">Field Observation</span>
+              <span class="member-tag">Traffic Counting</span>
+              <span class="member-tag">Conflict Analysis</span>
+              <span class="member-tag">Empirical Data</span>
+            </div>
+          </div>
+        </article>
+
+        <!-- CARD 3: PUTRI INTAN KANIA NOSA (ANALISIS TEORI) -->
+        <article class="team-card theory-card" data-member="putri">
+          <div class="card-glow-accent glow-purple"></div>
+          <div class="team-avatar-wrapper">
+            <img src="/team/putri.jpeg" alt="Putri Intan Kania Nosa" class="team-avatar-img">
+            <div class="avatar-ring ring-purple"></div>
+            <div class="avatar-status-pill theory-pill"><i class="fa-solid fa-book-bookmark"></i></div>
+          </div>
+          <div class="team-card-body">
+            <div class="team-role-pill role-theory">
+              <i class="fa-solid fa-book-bookmark"></i>
+              <span>Analisis Teori</span>
+            </div>
+            <h2 class="team-member-name">Putri Intan Kania Nosa</h2>
+            <span class="team-member-title">Theoretical & Safety Analyst</span>
+            <p class="team-member-desc">
+              Menyusun landasan teoritis pembangunan transportasi berkelanjutan (SDGs 11), analisis kapasitas jalan sesuai standar MKJI, kalkulasi tundaan kendaraan, dan kajian inklusi aksesibilitas bagi pejalan kaki tuna netra.
+            </p>
+            <div class="team-tags-list">
+              <span class="member-tag">Teori Transportasi</span>
+              <span class="member-tag">Pedoman MKJI</span>
+              <span class="member-tag">SDGs 11</span>
+              <span class="member-tag">Disability Inclusion</span>
+            </div>
+          </div>
+        </article>
+
+        <!-- CARD 4: TRIA LARASATI (DESIGN) -->
+        <article class="team-card design-card" data-member="tria">
+          <div class="card-glow-accent glow-rose"></div>
+          <div class="team-avatar-wrapper">
+            <img src="/team/tria.jpeg" alt="Tria Larasati" class="team-avatar-img">
+            <div class="avatar-ring ring-rose"></div>
+            <div class="avatar-status-pill design-pill"><i class="fa-solid fa-palette"></i></div>
+          </div>
+          <div class="team-card-body">
+            <div class="team-role-pill role-design">
+              <i class="fa-solid fa-palette"></i>
+              <span>Design</span>
+            </div>
+            <h2 class="team-member-name">Tria Larasati</h2>
+            <span class="team-member-title">UI/UX & Spatial Facility Designer</span>
+            <p class="team-member-desc">
+              Merancang antarmuka pengguna (UI/UX) deck simulasi interaktif, tata letak visual geometrik simpang, perancangan estetika tactile paving pemandu tuna netra, dan visualisasi fasilitas penyeberangan ramah pengguna.
+            </p>
+            <div class="team-tags-list">
+              <span class="member-tag">UI/UX Design</span>
+              <span class="member-tag">Desain Geometri</span>
+              <span class="member-tag">Tactile Paving</span>
+              <span class="member-tag">Visual Layout</span>
+            </div>
+          </div>
+        </article>
+      </div>
+
+      <div class="profile-footer-card">
+        <div class="profile-footer-left">
+          <i class="fa-solid fa-building-columns text-cyan"></i>
+          <div>
+            <strong>Departemen Pendidikan Fisika</strong>
+            <span>Fakultas Pendidikan Matematika dan Ilmu Pengetahuan Alam (FPMIPA) • Universitas Pendidikan Indonesia</span>
+          </div>
+        </div>
+        <button class="btn-back-to-simulasi" type="button" onclick="document.getElementById('btn-nav-simulasi').click()">
+          <i class="fa-solid fa-arrow-left"></i>
+          <span>Kembali ke Simulasi 3D</span>
+        </button>
+      </div>
+    </div>
+  </section>
+
+  <!-- =========================================================================
+       HASIL VIEW: KOMPARASI SEBELUM & SESUDAH PAKAI SISTEM
+       ========================================================================= -->
+  <section class="page-overlay-view" id="view-hasil" style="display: none;">
+    <div class="page-view-container hasil-page-container">
+      
+      <!-- HEADER & STEPPER -->
+      <div class="hasil-hero-header">
+        <div class="hasil-hero-badge">
+          <i class="fa-solid fa-chart-line text-cyan"></i>
+          <span>EVALUASI EMPIRIS & KOMPARASI SISTEM (JARAK KORIDOR 4 KM)</span>
+        </div>
+        <h1 class="hasil-page-title">Data Hasil Pengujian & Analisis Sistem</h1>
+        <p class="hasil-page-subtitle">
+          Perbandingan dampak penerapan sistem rekayasa penyeberangan pelican signal dan vegetasi pagar pembatas <em>Hedera Helix</em> terhadap reduksi emisi gas buang CO₂ serta efisiensi kelancaran lalu lintas di Koridor Setiabudi.
+        </p>
+
+        <!-- STEPPER DOCK -->
+        <div class="hasil-stepper-dock">
+          <button class="step-btn active" id="btn-step-before" type="button" title="Lihat Kondisi Sebelum Penerapan Sistem">
+            <span class="step-indicator red" id="ind-step-before">1</span>
+            <div class="step-meta">
+              <strong>Kondisi Sebelum Sistem</strong>
+              <span>Tanpa Hedera Helix & Arus Tersendat</span>
+            </div>
+          </button>
+          <div class="stepper-arrow"><i class="fa-solid fa-arrow-right"></i></div>
+          <button class="step-btn" id="btn-step-after" type="button" title="Lihat Kondisi Sesudah Penerapan Sistem">
+            <span class="step-indicator green" id="ind-step-after">2</span>
+            <div class="step-meta">
+              <strong>Kondisi Sesudah Sistem</strong>
+              <span>Pagar Hedera Helix & Pelican Signal</span>
+            </div>
+          </button>
+        </div>
+      </div>
+
+      <!-- MAIN COMPARISON CARDS (2 COLUMNS) -->
+      <div class="hasil-cards-container" id="hasil-cards-container">
+        
+        <!-- CARD 1: TANAMAN HEDERA HELIX (EMISI GAS CO2) -->
+        <div class="comparison-card" id="card-hedera-helix">
+          <div class="card-glow-bar" id="glow-hedera"></div>
+          
+          <div class="comp-card-header">
+            <div class="comp-icon-box green-theme">
+              <i class="fa-solid fa-leaf"></i>
+            </div>
+            <div class="comp-header-text">
+              <div class="comp-tag-row">
+                <span class="comp-category-tag">INDIKATOR 1: LINGKUNGAN & EMISI</span>
+                <span class="comp-status-chip" id="chip-status-hedera">Kondisi Sebelum</span>
+              </div>
+              <h2 class="comp-card-title">Penyerapan Emisi Gas CO₂ (Tanaman Hedera Helix)</h2>
+            </div>
+          </div>
+
+          <!-- METRIC DISPLAY -->
+          <div class="comp-metric-display">
+            <div class="metric-big-box">
+              <div class="metric-value-row">
+                <span class="metric-number-big" id="num-co2-val">2.10</span>
+                <span class="metric-unit">Ton CO₂</span>
+              </div>
+              <span class="metric-sub-label" id="label-co2-desc">Emisi gas buang karbon tanpa vegetasi penyerap</span>
+            </div>
+
+            <div class="metric-delta-pill" id="delta-pill-co2" style="display: none;">
+              <i class="fa-solid fa-arrow-trend-down"></i>
+              <span>Berkurang <strong>6%</strong> (-0.12 Ton)</span>
+            </div>
+          </div>
+
+          <!-- PROGRESS BAR / VISUAL METER -->
+          <div class="comp-meter-wrapper">
+            <div class="comp-meter-labels">
+              <span>Beban Emisi Karbon Terukur</span>
+              <strong id="meter-co2-percent">100% (2.10 Ton)</strong>
+            </div>
+            <div class="comp-meter-track">
+              <div class="comp-meter-fill red-fill" id="meter-co2-fill" style="width: 100%;"></div>
+            </div>
+            <div class="comp-meter-markers">
+              <span>0 t</span>
+              <span>Target: 1.98 t (-6%)</span>
+              <span>Baseline: 2.10 t</span>
+            </div>
+          </div>
+
+          <!-- INSIGHT EXPLANATION -->
+          <div class="comp-insight-box" id="insight-box-hedera">
+            <i class="fa-solid fa-circle-exclamation text-amber" id="icon-insight-hedera"></i>
+            <span id="text-insight-hedera">
+              <strong>Sebelum Ada Sistem:</strong> Koridor jalan tanpa vegetasi pembatas menghasilkan akumulasi emisi sebesar <strong>2,1 Ton CO₂</strong> dari kendaraan bermotor yang langsung terhirup oleh pejalan kaki di trotoar.
+            </span>
+          </div>
+        </div>
+
+        <!-- CARD 2: KELANCARAN LALU LINTAS (KECEPATAN & WAKTU TEMPUH 4 KM) -->
+        <div class="comparison-card" id="card-traffic-perf">
+          <div class="card-glow-bar" id="glow-traffic"></div>
+
+          <div class="comp-card-header">
+            <div class="comp-icon-box blue-theme">
+              <i class="fa-solid fa-gauge-high"></i>
+            </div>
+            <div class="comp-header-text">
+              <div class="comp-tag-row">
+                <span class="comp-category-tag">INDIKATOR 2: KELANCARAN & EFISIENSI (4 KM)</span>
+                <span class="comp-status-chip" id="chip-status-traffic">Kondisi Sebelum</span>
+              </div>
+              <h2 class="comp-card-title">Kecepatan Rata-Rata & Waktu Tempuh Koridor 4 KM</h2>
+            </div>
+          </div>
+
+          <!-- DUAL METRICS (SPEED & TIME) -->
+          <div class="comp-dual-metrics-grid">
+            <!-- SUB-METRIC 1: KECEPATAN -->
+            <div class="sub-metric-box">
+              <span class="sub-metric-title"><i class="fa-solid fa-tachometer-alt"></i> Kecepatan Rata-Rata</span>
+              <div class="sub-metric-val-row">
+                <span class="metric-number-big" id="num-speed-val">15</span>
+                <span class="metric-unit">km/jam</span>
+              </div>
+              <div class="sub-delta-pill" id="delta-pill-speed" style="display: none;">
+                <i class="fa-solid fa-arrow-trend-up"></i>
+                <span>Meningkat <strong>+146.7%</strong> (+22 km/jam)</span>
+              </div>
+            </div>
+
+            <!-- SUB-METRIC 2: WAKTU TEMPUH -->
+            <div class="sub-metric-box">
+              <span class="sub-metric-title"><i class="fa-solid fa-clock"></i> Waktu Tempuh (4 km)</span>
+              <div class="sub-metric-val-row">
+                <span class="metric-number-big" id="num-time-val">10:50</span>
+                <span class="metric-unit" id="unit-time-label">menit</span>
+              </div>
+              <div class="sub-delta-pill green-pill" id="delta-pill-time" style="display: none;">
+                <i class="fa-solid fa-stopwatch"></i>
+                <span>Lebih Cepat <strong>4m 50s</strong> (-44.6%)</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- PROGRESS BAR / VISUAL METER FOR SPEED -->
+          <div class="comp-meter-wrapper">
+            <div class="comp-meter-labels">
+              <span>Aliran Arus Koridor (Kapasitas Maks. 40 km/jam)</span>
+              <strong id="meter-speed-percent">15 km/jam (Macet & Tersendat)</strong>
+            </div>
+            <div class="comp-meter-track">
+              <div class="comp-meter-fill amber-fill" id="meter-speed-fill" style="width: 37.5%;"></div>
+            </div>
+            <div class="comp-meter-markers">
+              <span>0 km/jam</span>
+              <span>Sebelum: 15 km/jam</span>
+              <span>Sesudah: 37 km/jam</span>
+            </div>
+          </div>
+
+          <!-- INSIGHT EXPLANATION -->
+          <div class="comp-insight-box" id="insight-box-traffic">
+            <i class="fa-solid fa-triangle-exclamation text-amber" id="icon-insight-traffic"></i>
+            <span id="text-insight-traffic">
+              <strong>Sebelum Ada Sistem:</strong> Banyaknya pejalan kaki menyeberang sembarangan memaksa kendaraan berulang kali mengerem mendadak dan memicu antrean macet, menurunkan kecepatan rata-rata ke <strong>15 km/jam</strong> dan memperpanjang waktu tempuh 4 km menjadi <strong>10 menit 50 detik</strong>.
+            </span>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- CALL TO ACTION / STEP CONTROLS -->
+      <div class="hasil-cta-panel">
+        <div class="cta-left-info">
+          <span class="cta-step-badge" id="cta-phase-text">Langkah 1 dari 2: Tampilan Kondisi Awal</span>
+          <span class="cta-instruction-text" id="cta-desc-text">Klik tombol di samping untuk melihat hasil perubahan angka dramatis setelah sistem diterapkan.</span>
+        </div>
+
+        <div class="cta-buttons-group">
+          <!-- TOMBOL LANJUT UNTUK MELIHAT HASIL SETELAH ADA SISTEM -->
+          <button class="btn-hasil-proceed" id="btn-lanjut-hasil" type="button">
+            <i class="fa-solid fa-wand-magic-sparkles"></i>
+            <span id="btn-lanjut-text">Lihat Hasil Setelah Ada Sistem</span>
+            <i class="fa-solid fa-arrow-right"></i>
+          </button>
+
+          <!-- TOMBOL KEMBALI KE KONDISI SEBELUM -->
+          <button class="btn-hasil-reset" id="btn-reset-hasil" type="button" style="display: none;">
+            <i class="fa-solid fa-rotate-left"></i>
+            <span>Lihat Kondisi Sebelum</span>
+          </button>
+
+          <button class="btn-back-to-simulasi" type="button" onclick="document.getElementById('btn-nav-simulasi').click()">
+            <i class="fa-solid fa-cube"></i>
+            <span>Kembali ke Simulasi 3D</span>
+          </button>
+        </div>
+      </div>
+
+    </div>
+  </section>
 
   <!-- Main ES Module Script -->
   <script type="module" src="./src/main.js"></script>

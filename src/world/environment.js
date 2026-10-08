@@ -2006,7 +2006,8 @@ export class CityEnvironment {
 
       const width = 14;
       const depth = 16;
-      const floors = Math.floor(Math.random() * 2) + 2; // 2 or 3 floors
+      // Fixed 3 floors (10.2m) for Building 1 (z=4) and Building 2 (z=-14) for optimal sign placement
+      const floors = (z === -14 || z === 4) ? 3 : (Math.floor(Math.random() * 2) + 2);
       const height = floors * 3.4;
 
       const shopSignTexture = this.mm.textures.shopSigns[signIndex % this.mm.textures.shopSigns.length];
@@ -2021,6 +2022,38 @@ export class CityEnvironment {
         -Math.PI / 2, // Facing West towards Setiabudi
         shopSignTexture
       );
+
+      // Gedung 2 (z = -14, Sebelah Zebra Cross Mupenas Sisi Timur):
+      // "HIDUP SETIAP HARI TAPI MSTR SETIAP KAMIS PAGI ."
+      if (z === -14) {
+        this.createBuildingCustomSign(
+          21,
+          -14,
+          height,
+          {
+            badgeText: '✨ KATA-KATA HARI INI • TIM MSTR ✨',
+            mainText: 'HIDUP SETIAP HARI TAPI MSTR SETIAP KAMIS PAGI .',
+            subText: 'SIMULASI & REKAYASA LALU LINTAS KAWASAN SETIABUDI - UPI',
+            theme: 'cyan'
+          }
+        );
+      }
+
+      // Gedung 1 (z = 4, Sisi Timur Selatan Zebra Cross):
+      // "GA ADA KOREK GA API , UPII 🤪"
+      if (z === 4) {
+        this.createBuildingCustomSign(
+          21,
+          4,
+          height,
+          {
+            badgeText: '🔥 YEL-YEL MAHASISWA BUMI SILIWANGI UPI 🔥',
+            mainText: 'GA ADA KOREK GA API , UPII 🤪',
+            subText: 'UNIVERSITAS PENDIDIKAN INDONESIA • KAMPUS SETIABUDI',
+            theme: 'amber'
+          }
+        );
+      }
     }
 
     // 2. West Side Buildings - North of Perkasa (X < -13, Z < 0)
@@ -2030,7 +2063,7 @@ export class CityEnvironment {
 
       const width = 14;
       const depth = 16;
-      const height = (Math.floor(Math.random() * 2) + 2) * 3.4;
+      const height = (z === -8) ? 10.2 : ((Math.floor(Math.random() * 2) + 2) * 3.4);
       this.createShophouse(
         -21,
         z,
@@ -2041,6 +2074,11 @@ export class CityEnvironment {
         this.mm.textures.shopSigns[signIndex % this.mm.textures.shopSigns.length]
       );
       signIndex++;
+
+      // Rooftop Slogan Billboard on top of building across from Mupenas (Z = -8)
+      if (z === -8) {
+        this.createRooftopUPISloganBillboard(-21, -8, height);
+      }
     }
 
     // 2b. Gedung Rumah & Bangunan Residensial in former stub road area (Z: -48 to -64)
@@ -2296,6 +2334,467 @@ export class CityEnvironment {
 
     group.position.set(x, 0, z);
     group.rotation.y = rotY;
+    this.scene.add(group);
+  }
+
+  createBuildingCustomSign(x, z, height, config) {
+    const { badgeText, mainText, subText, theme } = config;
+    const isAmber = theme === 'amber';
+
+    // 1. Procedural Ultra-HD Sign Canvas (2048 x 512)
+    const canvas = document.createElement('canvas');
+    canvas.width = 2048;
+    canvas.height = 512;
+    const ctx = canvas.getContext('2d');
+
+    // Gradient background: Dark sleek metallic panel with thematic neon tint
+    const bgGrad = ctx.createLinearGradient(0, 0, 2048, 512);
+    if (isAmber) {
+      bgGrad.addColorStop(0, '#0f0505');
+      bgGrad.addColorStop(0.25, '#1c0b0b');
+      bgGrad.addColorStop(0.75, '#2b1008');
+      bgGrad.addColorStop(1, '#0d0404');
+    } else {
+      bgGrad.addColorStop(0, '#030d1a');
+      bgGrad.addColorStop(0.25, '#081a2e');
+      bgGrad.addColorStop(0.75, '#0f243d');
+      bgGrad.addColorStop(1, '#020b14');
+    }
+    ctx.fillStyle = bgGrad;
+    ctx.fillRect(0, 0, 2048, 512);
+
+    // Subtle hi-tech grid texture
+    ctx.strokeStyle = isAmber ? 'rgba(245, 158, 11, 0.08)' : 'rgba(56, 189, 248, 0.08)';
+    ctx.lineWidth = 2;
+    for (let gx = 0; gx < 2048; gx += 48) {
+      ctx.beginPath();
+      ctx.moveTo(gx, 0);
+      ctx.lineTo(gx, 512);
+      ctx.stroke();
+    }
+    for (let gy = 0; gy < 512; gy += 48) {
+      ctx.beginPath();
+      ctx.moveTo(0, gy);
+      ctx.lineTo(2048, gy);
+      ctx.stroke();
+    }
+
+    // Outer Glowing Border
+    ctx.strokeStyle = isAmber ? '#fbbf24' : '#38bdf8';
+    ctx.lineWidth = 14;
+    ctx.strokeRect(12, 12, 2024, 488);
+
+    ctx.strokeStyle = isAmber ? '#ef4444' : '#818cf8';
+    ctx.lineWidth = 4;
+    ctx.strokeRect(28, 28, 1992, 456);
+
+    // Corner decorative brackets
+    const cSize = 40;
+    ctx.fillStyle = isAmber ? '#fbbf24' : '#38bdf8';
+    ctx.fillRect(28, 28, cSize, 10);
+    ctx.fillRect(28, 28, 10, cSize);
+    ctx.fillRect(2020 - cSize, 28, cSize, 10);
+    ctx.fillRect(2010, 28, 10, cSize);
+    ctx.fillRect(28, 474, cSize, 10);
+    ctx.fillRect(28, 484 - cSize, 10, cSize);
+    ctx.fillRect(2020 - cSize, 474, cSize, 10);
+    ctx.fillRect(2010, 484 - cSize, 10, cSize);
+
+    // Top Pill Badge
+    const pillW = 760;
+    const pillH = 46;
+    const pillX = (2048 - pillW) / 2;
+    const pillY = 46;
+    ctx.fillStyle = isAmber ? 'rgba(239, 68, 68, 0.28)' : 'rgba(14, 165, 233, 0.28)';
+    ctx.strokeStyle = isAmber ? '#f59e0b' : '#38bdf8';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    if (typeof ctx.roundRect === 'function') {
+      ctx.roundRect(pillX, pillY, pillW, pillH, 23);
+    } else {
+      ctx.rect(pillX, pillY, pillW, pillH);
+    }
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.font = 'bold 22px "Outfit", "Plus Jakarta Sans", sans-serif';
+    ctx.fillStyle = isAmber ? '#fde047' : '#bae6fd';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(badgeText, 1024, pillY + pillH / 2);
+
+    // Main Inscription Text (Bold, Punchy, Glowing, Crisp!)
+    const mainFontSize = mainText.length > 38 ? 68 : (mainText.length > 25 ? 82 : 94);
+    ctx.font = `900 ${mainFontSize}px "Outfit", "Arial Black", "Segoe UI Emoji", sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+
+    ctx.shadowColor = isAmber ? '#f59e0b' : '#38bdf8';
+    ctx.shadowBlur = 32;
+    ctx.shadowOffsetX = 0;
+    ctx.shadowOffsetY = 0;
+
+    ctx.lineWidth = 14;
+    ctx.strokeStyle = isAmber ? '#451a03' : '#082f49';
+    ctx.strokeText(mainText, 1024, 235);
+
+    const mainGrad = ctx.createLinearGradient(0, 180, 0, 290);
+    if (isAmber) {
+      mainGrad.addColorStop(0, '#ffffff');
+      mainGrad.addColorStop(0.3, '#fef08a');
+      mainGrad.addColorStop(0.7, '#f59e0b');
+      mainGrad.addColorStop(1, '#ea580c');
+    } else {
+      mainGrad.addColorStop(0, '#ffffff');
+      mainGrad.addColorStop(0.3, '#e0f2fe');
+      mainGrad.addColorStop(0.7, '#38bdf8');
+      mainGrad.addColorStop(1, '#0284c7');
+    }
+    ctx.fillStyle = mainGrad;
+    ctx.fillText(mainText, 1024, 235);
+
+    ctx.shadowBlur = 0;
+
+    // Subtitle Bar
+    ctx.fillStyle = isAmber ? 'rgba(30, 10, 6, 0.85)' : 'rgba(8, 20, 36, 0.85)';
+    ctx.fillRect(80, 375, 1888, 62);
+    ctx.strokeStyle = isAmber ? 'rgba(245, 158, 11, 0.45)' : 'rgba(56, 189, 248, 0.45)';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(80, 375, 1888, 62);
+
+    ctx.font = '700 24px "Plus Jakarta Sans", sans-serif';
+    ctx.fillStyle = isAmber ? '#fbd38d' : '#94a3b8';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(subText, 1024, 406);
+
+    // Create CanvasTexture
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.anisotropy = 16;
+
+    // Container Group
+    const signGroup = new THREE.Group();
+
+    // 2. MESH A: Upper Wall Mounted Sign Plaque ("nempel ke dinding atas")
+    // Building center is at (x=21, z). Front wall is at X = 21 - 8 = 13.0.
+    const signWidth = 13.4;
+    const signHeight = 2.3;
+    const signDepth = 0.14;
+
+    const frameGeo = new THREE.BoxGeometry(signWidth, signHeight, signDepth);
+    const frameMat = new THREE.MeshLambertMaterial({ color: isAmber ? '#291717' : '#0f172a' });
+    const wallPlaque = new THREE.Mesh(frameGeo, frameMat);
+    wallPlaque.position.set(12.92, height - 1.35, z);
+    wallPlaque.rotation.y = -Math.PI / 2;
+    signGroup.add(wallPlaque);
+
+    const faceGeo = new THREE.PlaneGeometry(signWidth - 0.1, signHeight - 0.1);
+    const faceMat = new THREE.MeshBasicMaterial({ map: texture, side: THREE.FrontSide });
+    const wallFace = new THREE.Mesh(faceGeo, faceMat);
+    wallFace.position.set(0, 0, signDepth / 2 + 0.02);
+    wallPlaque.add(wallFace);
+
+    // 3. MESH B: Rooftop Crown / Parapet Edge Billboard ("nempel ke bibir atap / dinding atas")
+    // Angled upward at ~28 degrees so it is fully visible from aerial drone view (camera high above)
+    const crownWidth = 13.4;
+    const crownHeight = 2.1;
+    const crownDepth = 0.18;
+
+    const crownPlaque = new THREE.Mesh(
+      new THREE.BoxGeometry(crownWidth, crownHeight, crownDepth),
+      new THREE.MeshLambertMaterial({ color: '#1e293b' })
+    );
+    crownPlaque.position.set(13.15, height + 0.85, z);
+    crownPlaque.rotation.y = -Math.PI / 2;
+    crownPlaque.rotation.x = -0.50; // Tilted upward toward the sky & aerial camera!
+    signGroup.add(crownPlaque);
+
+    const crownFaceFront = new THREE.Mesh(
+      new THREE.PlaneGeometry(crownWidth - 0.1, crownHeight - 0.1),
+      faceMat
+    );
+    crownFaceFront.position.set(0, 0, crownDepth / 2 + 0.02);
+    crownPlaque.add(crownFaceFront);
+
+    // Double-sided back face on crown plaque
+    const crownFaceBack = new THREE.Mesh(
+      new THREE.PlaneGeometry(crownWidth - 0.1, crownHeight - 0.1),
+      faceMat
+    );
+    crownFaceBack.position.set(0, 0, -crownDepth / 2 - 0.02);
+    crownFaceBack.rotation.y = Math.PI;
+    crownPlaque.add(crownFaceBack);
+
+    // Structural support legs connecting crown plaque to roof parapet
+    const legGeo = new THREE.CylinderGeometry(0.06, 0.06, 1.2, 8);
+    const legMat = new THREE.MeshLambertMaterial({ color: '#475569' });
+    [-crownWidth * 0.38, -crownWidth * 0.12, crownWidth * 0.12, crownWidth * 0.38].forEach(lx => {
+      const leg = new THREE.Mesh(legGeo, legMat);
+      leg.position.set(13.35, height + 0.35, z + lx);
+      signGroup.add(leg);
+    });
+
+    // Floodlight lamps above crown sign
+    [-crownWidth * 0.32, 0, crownWidth * 0.32].forEach(fx => {
+      const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.8, 6), legMat);
+      arm.position.set(12.75, height + 1.85, z + fx);
+      arm.rotation.z = Math.PI / 4;
+      signGroup.add(arm);
+
+      const lamp = new THREE.Mesh(
+        new THREE.BoxGeometry(0.35, 0.14, 0.25),
+        new THREE.MeshLambertMaterial({ color: '#0f172a' })
+      );
+      lamp.position.set(12.65, height + 1.95, z + fx);
+      signGroup.add(lamp);
+
+      const glow = new THREE.Mesh(
+        new THREE.PlaneGeometry(0.3, 0.12),
+        new THREE.MeshBasicMaterial({ color: isAmber ? '#fef08a' : '#38bdf8' })
+      );
+      glow.position.set(12.64, height + 1.92, z + fx);
+      glow.rotation.y = -Math.PI / 2;
+      glow.rotation.x = Math.PI / 6;
+      signGroup.add(glow);
+    });
+
+    this.scene.add(signGroup);
+  }
+
+  createRooftopUPISloganBillboard(x, z, roofY) {
+    const group = new THREE.Group();
+
+    // 1. Create Ultra-HD Procedural Canvas for the Slogan
+    const canvas = document.createElement('canvas');
+    canvas.width = 2048;
+    canvas.height = 768;
+    const ctx = canvas.getContext('2d');
+
+    // Background gradient: sleek dark cyber gradient with neon purple/blue tints
+    const bgGrad = ctx.createLinearGradient(0, 0, 2048, 768);
+    bgGrad.addColorStop(0, '#0a0e1a');
+    bgGrad.addColorStop(0.3, '#141b2d');
+    bgGrad.addColorStop(0.7, '#1e1b4b');
+    bgGrad.addColorStop(1, '#0b0f19');
+    ctx.fillStyle = bgGrad;
+    ctx.fillRect(0, 0, 2048, 768);
+
+    // Subtle carbon grid lines
+    ctx.strokeStyle = 'rgba(56, 189, 248, 0.08)';
+    ctx.lineWidth = 2;
+    for (let gx = 0; gx < 2048; gx += 48) {
+      ctx.beginPath();
+      ctx.moveTo(gx, 0);
+      ctx.lineTo(gx, 768);
+      ctx.stroke();
+    }
+    for (let gy = 0; gy < 768; gy += 48) {
+      ctx.beginPath();
+      ctx.moveTo(0, gy);
+      ctx.lineTo(2048, gy);
+      ctx.stroke();
+    }
+
+    // Outer Glowing Neon Borders
+    ctx.strokeStyle = '#f59e0b';
+    ctx.lineWidth = 16;
+    ctx.strokeRect(16, 16, 2016, 736);
+
+    ctx.strokeStyle = '#38bdf8';
+    ctx.lineWidth = 6;
+    ctx.strokeRect(36, 36, 1976, 696);
+
+    // Decorative corner brackets
+    const cornerSize = 50;
+    ctx.fillStyle = '#fbbf24';
+    ctx.fillRect(36, 36, cornerSize, 12);
+    ctx.fillRect(36, 36, 12, cornerSize);
+    ctx.fillRect(2012 - cornerSize, 36, cornerSize, 12);
+    ctx.fillRect(2000, 36, 12, cornerSize);
+    ctx.fillRect(36, 720, cornerSize, 12);
+    ctx.fillRect(36, 732 - cornerSize, 12, cornerSize);
+    ctx.fillRect(2012 - cornerSize, 720, cornerSize, 12);
+    ctx.fillRect(2000, 732 - cornerSize, 12, cornerSize);
+
+    // Top Pill Badge: Spirit of Bumi Siliwangi
+    const pillW = 780;
+    const pillH = 54;
+    const pillX = (2048 - pillW) / 2;
+    const pillY = 65;
+    ctx.fillStyle = 'rgba(239, 68, 68, 0.22)';
+    ctx.strokeStyle = '#ef4444';
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    if (typeof ctx.roundRect === 'function') {
+      ctx.roundRect(pillX, pillY, pillW, pillH, 27);
+    } else {
+      ctx.rect(pillX, pillY, pillW, pillH);
+    }
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.font = 'bold 26px "Outfit", "Plus Jakarta Sans", sans-serif';
+    ctx.fillStyle = '#fecaca';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('🔥 YEL-YEL MAHASISWA BUMI SILIWANGI UPI 🔥', 1024, pillY + pillH / 2);
+
+    // Main Line 1: "GA ADA KOREK GA ADA API ,"
+    ctx.font = '900 84px "Outfit", "Arial Black", sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+
+    ctx.shadowColor = '#f59e0b';
+    ctx.shadowBlur = 30;
+    ctx.shadowOffsetX = 0;
+    ctx.shadowOffsetY = 0;
+
+    ctx.lineWidth = 12;
+    ctx.strokeStyle = '#78350f';
+    ctx.strokeText('GA ADA KOREK GA ADA API ,', 1024, 250);
+
+    const textGrad1 = ctx.createLinearGradient(0, 200, 0, 300);
+    textGrad1.addColorStop(0, '#ffffff');
+    textGrad1.addColorStop(0.3, '#fef08a');
+    textGrad1.addColorStop(1, '#f59e0b');
+    ctx.fillStyle = textGrad1;
+    ctx.fillText('GA ADA KOREK GA ADA API ,', 1024, 250);
+
+    ctx.shadowBlur = 0;
+
+    // Main Line 2: "UPIIII 🤪"
+    ctx.font = '900 155px "Outfit", "Arial Black", "Segoe UI Emoji", sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+
+    ctx.shadowColor = '#38bdf8';
+    ctx.shadowBlur = 45;
+
+    ctx.lineWidth = 18;
+    ctx.strokeStyle = '#0c4a6e';
+    ctx.strokeText('UPIIII! 🤪', 1024, 470);
+
+    const textGrad2 = ctx.createLinearGradient(0, 380, 0, 560);
+    textGrad2.addColorStop(0, '#ffffff');
+    textGrad2.addColorStop(0.4, '#bae6fd');
+    textGrad2.addColorStop(0.8, '#38bdf8');
+    textGrad2.addColorStop(1, '#0284c7');
+    ctx.fillStyle = textGrad2;
+    ctx.fillText('UPIIII! 🤪', 1024, 470);
+
+    ctx.shadowBlur = 0;
+
+    // Subtitle / Bottom bar
+    ctx.fillStyle = 'rgba(15, 23, 42, 0.75)';
+    ctx.fillRect(80, 615, 1888, 70);
+    ctx.strokeStyle = 'rgba(56, 189, 248, 0.35)';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(80, 615, 1888, 70);
+
+    ctx.font = '700 28px "Plus Jakarta Sans", sans-serif';
+    ctx.fillStyle = '#94a3b8';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('UNIVERSITAS PENDIDIKAN INDONESIA • KAMPUS SETIABUDI BANDUNG', 1024, 650);
+
+    // Create CanvasTexture
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.anisotropy = 16;
+
+    // 2. 3D Billboard Board Mesh (Front & Back)
+    const boardWidth = 14.0;
+    const boardHeight = 5.25;
+    const boardDepth = 0.45;
+
+    const frameGeo = new THREE.BoxGeometry(boardWidth, boardHeight, boardDepth);
+    const frameMat = new THREE.MeshLambertMaterial({ color: '#1e293b' });
+    const boardMesh = new THREE.Mesh(frameGeo, frameMat);
+    boardMesh.position.y = boardHeight / 2 + 1.8;
+    group.add(boardMesh);
+
+    // Front Face (Facing +Z in local coordinates)
+    const frontGeo = new THREE.PlaneGeometry(boardWidth - 0.2, boardHeight - 0.2);
+    const frontMat = new THREE.MeshBasicMaterial({
+      map: texture,
+      side: THREE.FrontSide
+    });
+    const frontFace = new THREE.Mesh(frontGeo, frontMat);
+    frontFace.position.set(0, boardHeight / 2 + 1.8, boardDepth / 2 + 0.02);
+    group.add(frontFace);
+
+    // Back Face (Also show slogan from rear/campus view!)
+    const backMat = new THREE.MeshBasicMaterial({
+      map: texture,
+      side: THREE.FrontSide
+    });
+    const backFace = new THREE.Mesh(frontGeo, backMat);
+    backFace.position.set(0, boardHeight / 2 + 1.8, -boardDepth / 2 - 0.02);
+    backFace.rotation.y = Math.PI;
+    group.add(backFace);
+
+    // 3. Steel Scaffolding Truss Support Legs
+    const legGeo = new THREE.CylinderGeometry(0.09, 0.09, 2.2, 8);
+    const steelMat = new THREE.MeshLambertMaterial({ color: '#475569' });
+
+    [-boardWidth * 0.38, -boardWidth * 0.12, boardWidth * 0.12, boardWidth * 0.38].forEach(lx => {
+      [-boardDepth * 0.4, boardDepth * 0.4].forEach(lz => {
+        const leg = new THREE.Mesh(legGeo, steelMat);
+        leg.position.set(lx, 1.1, lz);
+        group.add(leg);
+      });
+      const diagGeo = new THREE.CylinderGeometry(0.05, 0.05, 2.4, 6);
+      const diag = new THREE.Mesh(diagGeo, steelMat);
+      diag.position.set(lx, 1.1, 0);
+      diag.rotation.x = Math.PI / 4;
+      group.add(diag);
+    });
+
+    // Concrete Footing Pads
+    [-boardWidth * 0.38, -boardWidth * 0.12, boardWidth * 0.12, boardWidth * 0.38].forEach(lx => {
+      const padGeo = new THREE.BoxGeometry(0.8, 0.25, 1.2);
+      const pad = new THREE.Mesh(padGeo, this.mm.materials.sidewalk);
+      pad.position.set(lx, 0.12, 0);
+      group.add(pad);
+    });
+
+    // 4. Overhead Floodlight Fixtures
+    [-boardWidth * 0.35, 0, boardWidth * 0.35].forEach(fx => {
+      const armGeo = new THREE.CylinderGeometry(0.04, 0.04, 1.2, 8);
+      const arm = new THREE.Mesh(armGeo, steelMat);
+      arm.position.set(fx, boardHeight + 2.0, boardDepth / 2 + 0.55);
+      arm.rotation.x = -Math.PI / 3;
+      group.add(arm);
+
+      const lampGeo = new THREE.BoxGeometry(0.5, 0.2, 0.4);
+      const lamp = new THREE.Mesh(lampGeo, new THREE.MeshLambertMaterial({ color: '#0f172a' }));
+      lamp.position.set(fx, boardHeight + 2.2, boardDepth / 2 + 0.95);
+      lamp.rotation.x = Math.PI / 4;
+      group.add(lamp);
+
+      const lensGeo = new THREE.PlaneGeometry(0.45, 0.18);
+      const lensMat = new THREE.MeshBasicMaterial({ color: '#fef08a' });
+      const lens = new THREE.Mesh(lensGeo, lensMat);
+      lens.position.set(fx, boardHeight + 2.15, boardDepth / 2 + 0.98);
+      lens.rotation.x = Math.PI / 4;
+      group.add(lens);
+    });
+
+    // 5. Red Aviation Obstruction Beacons
+    [-boardWidth / 2, boardWidth / 2].forEach(bx => {
+      const beaconPoleGeo = new THREE.CylinderGeometry(0.04, 0.04, 0.8, 8);
+      const bPole = new THREE.Mesh(beaconPoleGeo, steelMat);
+      bPole.position.set(bx, boardHeight + 2.2, 0);
+      group.add(bPole);
+
+      const beaconSphereGeo = new THREE.SphereGeometry(0.18, 12, 12);
+      const bSphereMat = new THREE.MeshBasicMaterial({ color: '#ef4444' });
+      const bSphere = new THREE.Mesh(beaconSphereGeo, bSphereMat);
+      bSphere.position.set(bx, boardHeight + 2.65, 0);
+      group.add(bSphere);
+    });
+
+    group.position.set(x, roofY, z);
+    group.rotation.y = Math.PI / 2; // Facing East towards Setiabudi and Mupenas
     this.scene.add(group);
   }
 

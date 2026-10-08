@@ -7,6 +7,7 @@ import { TrafficSystem } from './vehicles/trafficSystem.js';
 import { PedestrianSystem } from './pedestrians/pedestrianSystem.js';
 import { HUDManager } from './ui/hud.js';
 import { VehicleDetector } from './ai/vehicleDetector.js';
+import { PageNavigationManager } from './ui/pageNav.js';
 
 export class TrafficSimulationApp {
   constructor() {
@@ -76,6 +77,7 @@ export class TrafficSimulationApp {
     this.trafficSystem.setPedestrianSystem(this.pedestrianSystem); // Bidirectional link for green wave corridor
     this.hud = new HUDManager(this);
     this.vehicleDetector = new VehicleDetector(this);
+    this.pageNav = new PageNavigationManager(this);
 
     // Initial lighting state
     this.lightingMode = 'day';
@@ -210,8 +212,8 @@ export class TrafficSimulationApp {
       this.controls.maxDistance = 250;
       this.controls.maxPolarAngle = Math.PI / 2 - 0.02;
       this.controls.minPolarAngle = 0.02;
-      this.camera.position.set(9.0, 1.85, -8.0);
-      this.controls.target.set(-8.0, 1.5, -8.0);
+      this.camera.position.set(9.2, 2.2, -8.0);
+      this.controls.target.set(-9.0, 3.4, -8.0);
       this.controls.update();
     } else if (mode === 'upi') {
       this.controls.enabled = true;

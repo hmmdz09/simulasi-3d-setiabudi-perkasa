@@ -1,11 +1,13 @@
-import * as ort from 'onnxruntime-web/webgpu';
+import * as ort from 'onnxruntime-web';
 
-// Explicitly provide jsDelivr CDN paths for all ONNX WASM binaries so it works 100% on Vercel
-ort.env.wasm.wasmPaths = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.30.0/dist/';
+// Always point to local /wasm/ directory containing all ort wasm files
+if (typeof self !== 'undefined') {
+  ort.env.wasm.wasmPaths = '/wasm/';
+}
 
 let session = null;
-let inputName = 'pixel_values';
-let isYolo26 = true;
+let inputName = 'images';
+let isYolo26 = false;
 let offCanvas = null;
 let offCtx = null;
 let floatArr = new Float32Array(3 * 640 * 640);
@@ -23,9 +25,7 @@ self.onmessage = async (e) => {
       if (session) {
         try {
           await session.release();
-        } catch (e) {
-          console.warn('Session release error:', e);
-        }
+        } catch (e) {}
         session = null;
       }
 
@@ -33,9 +33,9 @@ self.onmessage = async (e) => {
       ort.env.wasm.numThreads = hasSAB ? Math.min(4, navigator.hardwareConcurrency || 2) : 1;
       ort.env.wasm.simd = true;
 
-      // Prioritize WebGPU hardware acceleration on GPU for ultra-low latency (<25ms)
+      // Ultra-stable and ultra-fast WebAssembly provider with local wasm binaries
       session = await ort.InferenceSession.create(data.modelUrl, {
-        executionProviders: ['webgpu', 'wasm'],
+        executionProviders: ['wasm'],
         graphOptimizationLevel: 'all'
       });
 
@@ -55,7 +55,6 @@ self.onmessage = async (e) => {
         modelUrl: data.modelUrl
       });
     } catch (err) {
-      console.error('Worker ONNX session creation failed:', err);
       self.postMessage({ type: 'INIT_ERROR', error: err.message, modelUrl: data.modelUrl });
     }
   } else if (data.type === 'DETECT') {
@@ -70,7 +69,7 @@ self.onmessage = async (e) => {
     const vidH = captureMeta.vidH || 360;
 
     try {
-      // 1. Direct High-Speed Resize to 640x640 on worker thread
+      // 1. Direct High-Speed Resize to 640x640 on worker thread (Native YOLOS/DETR format)
       offCtx.drawImage(bitmap, 0, 0, 640, 640);
       bitmap.close(); // Immediate GPU memory release
 
@@ -103,22 +102,20 @@ self.onmessage = async (e) => {
       feeds[inputName] = inputTensor;
       const results = await session.run(feeds);
 
-      // 4. Candidate extraction with sensitive motorcycle and car detection for Indonesian CCTV
+      // 4. Candidate extraction with ultra-sensitive omnidirectional motorcycle detection
       const motoThreshold = Math.max(0.04, confThreshold * 0.35);
-      const carThreshold = Math.max(0.12, confThreshold * 0.65);
+      const carThreshold = Math.max(0.12, confThreshold * 0.70);
       const candidates = [];
 
       if (isYolo26 && results.logits && results.pred_boxes) {
         // ===================================================================
-        // ULTRALYTICS YOLOv26: NMS-FREE END-TO-END DECODER (DUAL-HEAD QUERIES)
+        // ULTRALYTICS YOLOv26: NMS-FREE END-TO-END DECODER (300 DUAL-HEAD QUERIES)
         // ===================================================================
         const logits = results.logits.data;
         const predBoxes = results.pred_boxes.data;
-        const numQueries = results.logits.dims ? results.logits.dims[1] : 300;
-        const numClasses = results.logits.dims ? results.logits.dims[2] : 80;
 
-        for (let i = 0; i < numQueries; i++) {
-          const off = i * numClasses;
+        for (let i = 0; i < 300; i++) {
+          const off = i * 80;
           const personScore = sigmoid(logits[off + 0]);
           const bicycleScore = sigmoid(logits[off + 1]);
           const carScore = sigmoid(logits[off + 2]);
@@ -126,12 +123,11 @@ self.onmessage = async (e) => {
           const busScore = sigmoid(logits[off + 5]);
           const truckScore = sigmoid(logits[off + 7]);
 
-          // Indonesian traffic: Angkot, bus, truck counted under 4-wheel/automobile
           const autoScore = Math.max(carScore, busScore, truckScore);
           const twoWheelerScore = Math.max(motoScore, bicycleScore);
 
-          // Rear-view motorcyclist fusion (rider + motorcycle detected in same query)
-          const riderFusion = (twoWheelerScore >= 0.04 && personScore >= 0.06);
+          // Sensitive rider fusion for Indonesian traffic CCTV
+          const riderFusion = (personScore >= 0.08 && (twoWheelerScore >= 0.02 || personScore >= 0.14));
           const effectiveMotoScore = riderFusion
             ? Math.max(twoWheelerScore, personScore * 0.90)
             : twoWheelerScore;
@@ -150,6 +146,7 @@ self.onmessage = async (e) => {
           const isTwoWheeler = effectiveMotoScore >= motoThreshold;
           const isAutomobile = autoScore >= carThreshold;
 
+          // Omnidirectional detection for motorcycles:
           if (isTwoWheeler && (effectiveMotoScore >= autoScore * 0.65 || riderFusion || aspectRatio < 1.15)) {
             cls = 'motorcycle';
             score = effectiveMotoScore;
@@ -165,6 +162,7 @@ self.onmessage = async (e) => {
           }
 
           if (cls) {
+            // Direct exact scaling to native video pixel coordinates [0..vidW, 0..vidH]
             const realX = Math.max(0, (cx_norm - w_norm / 2) * vidW);
             const realY = Math.max(0, (cy_norm - h_norm / 2) * vidH);
             const realW = Math.min(vidW - realX, w_norm * vidW);
@@ -179,108 +177,65 @@ self.onmessage = async (e) => {
         }
       } else if (results.output0) {
         // ===================================================================
-        // ULTRALYTICS YOLOv8: MULTI-SCALE CNN ANCHOR DECODER
+        // ULTRALYTICS YOLOv8: GRID-BASED RAW ANCHOR DECODER (8400 COLS)
         // ===================================================================
-        const output = results.output0;
-        const outputData = output.data;
-        const dims = output.dims || [1, 84, 8400];
-        
-        let numCandidates = 8400;
-        let isTransposed = false;
-        if (dims.length === 3) {
-          if (dims[1] === 84 && dims[2] === 8400) {
-            numCandidates = dims[2];
-            isTransposed = false;
-          } else if (dims[1] === 8400 && dims[2] === 84) {
-            numCandidates = dims[1];
-            isTransposed = true;
-          }
-        }
+        const outputData = results.output0.data;
+        const numCandidates = 8400;
 
         for (let c = 0; c < numCandidates; c++) {
-          let personScore, bicycleScore, carScore, motoScore, busScore, truckScore;
-          let cx_raw, cy_raw, w_raw, h_raw;
+          const personScore = outputData[4 * numCandidates + c] || 0;
+          const bicycleScore = outputData[5 * numCandidates + c] || 0;
+          const carScore = outputData[6 * numCandidates + c] || 0;
+          const motoScore = outputData[7 * numCandidates + c] || 0;
+          const busScore = outputData[9 * numCandidates + c] || 0;
+          const truckScore = outputData[11 * numCandidates + c] || 0;
 
-          if (!isTransposed) {
-            // [1, 84, 8400]: index = attr * 8400 + c
-            cx_raw = outputData[0 * numCandidates + c];
-            cy_raw = outputData[1 * numCandidates + c];
-            w_raw = outputData[2 * numCandidates + c];
-            h_raw = outputData[3 * numCandidates + c];
-
-            personScore = outputData[4 * numCandidates + c];
-            bicycleScore = outputData[5 * numCandidates + c];
-            carScore = outputData[6 * numCandidates + c];
-            motoScore = outputData[7 * numCandidates + c];
-            busScore = outputData[9 * numCandidates + c];
-            truckScore = outputData[11 * numCandidates + c];
-          } else {
-            // [1, 8400, 84]: index = c * 84 + attr
-            const base = c * 84;
-            cx_raw = outputData[base + 0];
-            cy_raw = outputData[base + 1];
-            w_raw = outputData[base + 2];
-            h_raw = outputData[base + 3];
-
-            personScore = outputData[base + 4];
-            bicycleScore = outputData[base + 5];
-            carScore = outputData[base + 6];
-            motoScore = outputData[base + 7];
-            busScore = outputData[base + 9];
-            truckScore = outputData[base + 11];
-          }
-
+          // Automobiles in Indonesian traffic (Mobil pribadi, Angkot, Bus, Truk)
           const autoScore = Math.max(carScore, busScore, truckScore);
-          const twoWheelerScore = Math.max(motoScore, bicycleScore);
 
-          const riderFusion = (twoWheelerScore >= 0.04 && personScore >= 0.06);
-          const effectiveMotoScore = riderFusion
-            ? Math.max(twoWheelerScore, personScore * 0.90)
-            : twoWheelerScore;
+          // Motorcycles & 2-Wheelers (Sepeda Motor, Skuter matic, Bebek, Motor + Pengendara)
+          // Indonesian CCTV often detects riders partly as person
+          const riderBoost = (personScore >= 0.08 && (motoScore >= 0.02 || bicycleScore >= 0.02)) ? Math.max(motoScore, personScore * 0.88) : 0;
+          const twoWheelerScore = Math.max(motoScore, bicycleScore, riderBoost);
 
-          const aspectRatio = w_raw / Math.max(1, h_raw);
+          // Dedicated sensitive thresholds for traffic CCTV
+          const isTwoWheeler = twoWheelerScore >= motoThreshold;
+          const isCar = autoScore >= carThreshold;
 
-          let cls = null;
-          let score = 0;
+          if (isTwoWheeler || isCar) {
+            let cls = 'car';
+            let score = autoScore;
 
-          const isTwoWheeler = effectiveMotoScore >= motoThreshold;
-          const isAutomobile = autoScore >= carThreshold;
+            if (isTwoWheeler && (!isCar || twoWheelerScore >= autoScore * 0.70)) {
+              cls = 'motorcycle';
+              score = twoWheelerScore;
+            } else {
+              cls = 'car';
+              score = autoScore;
+            }
 
-          if (isTwoWheeler && (effectiveMotoScore >= autoScore * 0.65 || riderFusion || aspectRatio < 1.15)) {
-            cls = 'motorcycle';
-            score = effectiveMotoScore;
-          } else if (isAutomobile && (autoScore > effectiveMotoScore || aspectRatio >= 0.70)) {
-            cls = 'car';
-            score = autoScore;
-          } else if (isTwoWheeler) {
-            cls = 'motorcycle';
-            score = effectiveMotoScore;
-          } else if (isAutomobile) {
-            cls = 'car';
-            score = autoScore;
-          }
+            const cx_raw = outputData[0 * numCandidates + c];
+            const cy_raw = outputData[1 * numCandidates + c];
+            const w_raw = outputData[2 * numCandidates + c];
+            const h_raw = outputData[3 * numCandidates + c];
 
-          if (cls) {
-            const cx_norm = cx_raw / 640;
-            const cy_norm = cy_raw / 640;
-            const w_norm = w_raw / 640;
-            const h_norm = h_raw / 640;
+            const realX = Math.max(0, (cx_raw - w_raw / 2) * (vidW / 640));
+            const realY = Math.max(0, (cy_raw - h_raw / 2) * (vidH / 640));
+            const realW = Math.min(vidW - realX, w_raw * (vidW / 640));
+            const realH = Math.min(vidH - realY, h_raw * (vidH / 640));
 
-            const realX = Math.max(0, (cx_norm - w_norm / 2) * vidW);
-            const realY = Math.max(0, (cy_norm - h_norm / 2) * vidH);
-            const realW = Math.min(vidW - realX, w_norm * vidW);
-            const realH = Math.min(vidH - realY, h_norm * vidH);
-
-            candidates.push({
-              bbox: [realX, realY, realW, realH],
-              score: score,
-              class: cls
-            });
+            if (realW >= 6 && realH >= 6 && realW <= vidW * 0.98 && realH <= vidH * 0.98) {
+              candidates.push({
+                bbox: [realX, realY, realW, realH],
+                score: score,
+                class: cls
+              });
+            }
           }
         }
       }
 
-      // 5. Clean Bounding Box Duplicate Suppression (NMS)
+      // 5. Clean Bounding Box Duplicate Suppression
       candidates.sort((a, b) => b.score - a.score);
       const selected = [];
 
@@ -318,7 +273,6 @@ self.onmessage = async (e) => {
         isYolo26
       });
     } catch (err) {
-      console.warn('Inference error in worker:', err);
       self.postMessage({ type: 'DETECT_ERROR', error: err.message, captureMeta });
     }
   }

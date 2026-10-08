@@ -64,6 +64,41 @@ export class TrafficSystem {
     this.pedestrianSystem = pedSys;
   }
 
+  isSetiabudiDualRed() {
+    return this.simpangLightPhase === 'ALL_RED_1' ||
+           this.simpangLightPhase === 'BAJURI_GREEN' ||
+           this.simpangLightPhase === 'BAJURI_YELLOW' ||
+           this.simpangLightPhase === 'ALL_RED_2';
+  }
+
+  forceSetiabudiDualRed() {
+    this.simpangLightPhase = 'BAJURI_GREEN';
+    this.simpangLightTimer = 0;
+    if (this.environment && this.environment.setSimpangLightPhase) {
+      this.environment.setSimpangLightPhase(this.simpangLightPhase);
+    }
+    if (this.pedestrianSystem && typeof this.pedestrianSystem.releaseLockdownForDualRed === 'function') {
+      this.pedestrianSystem.releaseLockdownForDualRed();
+    }
+  }
+
+  forceSetiabudiGreen() {
+    this.simpangLightPhase = 'SETIABUDI_GREEN';
+    this.simpangLightTimer = 0;
+    if (this.environment && this.environment.setSimpangLightPhase) {
+      this.environment.setSimpangLightPhase(this.simpangLightPhase);
+    }
+  }
+
+  toggleDualRedPhase() {
+    if (this.isSetiabudiDualRed()) {
+      this.forceSetiabudiGreen();
+    } else {
+      this.forceSetiabudiDualRed();
+    }
+    return this.isSetiabudiDualRed();
+  }
+
   activateGreenWave(duration = 14.0) {
     this.greenWaveActive = true;
     this.greenWaveTimer = duration;
@@ -454,6 +489,14 @@ export class TrafficSystem {
       this.simpangLightPhase = newPhase;
       if (this.environment && this.environment.setSimpangLightPhase) {
         this.environment.setSimpangLightPhase(this.simpangLightPhase);
+      }
+    }
+
+    // Koordinasi Khusus: Jika Jalan Setiabudi dan Terusan Setiabudi kedua-duanya Merah,
+    // maka lockdown di penyeberangan Mupenas langsung dilepas & langsung tersedia!
+    if (this.isSetiabudiDualRed() && this.pedestrianSystem && this.pedestrianSystem.isButtonLocked) {
+      if (typeof this.pedestrianSystem.releaseLockdownForDualRed === 'function') {
+        this.pedestrianSystem.releaseLockdownForDualRed();
       }
     }
 
@@ -1078,7 +1121,7 @@ export class TrafficSystem {
     let bajuriState = 'RED';
     let bajuriTimeRemaining = 0;
 
-    const t = this.simpangLightTimer;
+    const t = this.simpangLightTimer || 0;
     if (this.simpangLightPhase === 'SETIABUDI_GREEN') {
       setiabudiState = 'GREEN';
       setiabudiTimeRemaining = Math.max(0, Math.ceil(76.0 - t));
@@ -1109,11 +1152,23 @@ export class TrafficSystem {
       setiabudiTimeRemaining = Math.max(0, Math.ceil(5.0 - t));
       bajuriState = 'RED';
       bajuriTimeRemaining = Math.max(0, Math.ceil((5.0 - t) + 80.0));
+    } else {
+      setiabudiState = 'GREEN';
+      setiabudiTimeRemaining = 76;
+      bajuriState = 'RED';
+      bajuriTimeRemaining = 80;
     }
+
+    const isDualRed = typeof this.isSetiabudiDualRed === 'function' ? this.isSetiabudiDualRed() : false;
 
     return {
       phase: this.simpangLightPhase,
       timer: this.simpangLightTimer,
+      isDualRed,
+      setiabudiState,
+      setiabudiTimeRemaining,
+      bajuriState,
+      bajuriTimeRemaining,
       setiabudi: {
         state: setiabudiState,
         countdown: setiabudiTimeRemaining,

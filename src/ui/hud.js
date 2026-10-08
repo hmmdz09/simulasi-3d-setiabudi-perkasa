@@ -36,6 +36,9 @@ export class HUDManager {
         btn.classList.add('active');
 
         this.app.pedestrianSystem.setCrossingMode(mode);
+        if (this.app.pedestrianSystem && this.app.pedestrianSystem.audio) {
+          this.app.pedestrianSystem.audio.playButtonFeedback();
+        }
 
         const chip = document.getElementById('chip-mode-status');
         if (chip) {
@@ -64,6 +67,17 @@ export class HUDManager {
     if (cancelBtn) {
       cancelBtn.addEventListener('click', () => {
         this.app.pedestrianSystem.cancelCrossing();
+      });
+    }
+
+    // 4b. Toggle Simpang 3 Dual-Red Phase (Setiabudi & Terusan Merah Keduanya)
+    const toggleDualRedBtn = document.getElementById('btn-toggle-dual-red');
+    if (toggleDualRedBtn) {
+      toggleDualRedBtn.addEventListener('click', () => {
+        if (this.app.trafficSystem && typeof this.app.trafficSystem.toggleDualRedPhase === 'function') {
+          const isDual = this.app.trafficSystem.toggleDualRedPhase();
+          this.updateDualRedWidget(isDual);
+        }
       });
     }
 
@@ -139,9 +153,9 @@ export class HUDManager {
       });
     }
 
-    // 6. Pedestrian crossing state listener (with green wave corridor & empirical data integration)
-    this.app.pedestrianSystem.onStateChange = (isCrossing, isButtonLocked, crossingSec, lockdownSec, mode, greenWaveInfo, empiricalInfo) => {
-      this.updateCrossingUI(isCrossing, isButtonLocked, crossingSec, lockdownSec, mode, greenWaveInfo, empiricalInfo);
+    // 6. Pedestrian crossing state listener (with green wave corridor, audio guidance, empirical data & dual-red sync)
+    this.app.pedestrianSystem.onStateChange = (isCrossing, isButtonLocked, crossingSec, lockdownSec, mode, greenWaveInfo, empiricalInfo, audioAnnounceInfo, dualRedInfo) => {
+      this.updateCrossingUI(isCrossing, isButtonLocked, crossingSec, lockdownSec, mode, greenWaveInfo, empiricalInfo, audioAnnounceInfo, dualRedInfo);
     };
 
     // 7. Toggle Control Deck Button
@@ -216,7 +230,7 @@ export class HUDManager {
     }
   }
 
-  updateCrossingUI(isCrossing, isButtonLocked, crossingSec, lockdownSec, mode, greenWaveInfo = null, empiricalInfo = null) {
+  updateCrossingUI(isCrossing, isButtonLocked, crossingSec, lockdownSec, mode, greenWaveInfo = null, empiricalInfo = null, audioAnnounceInfo = null, dualRedInfo = null) {
     const badge = document.getElementById('zebra-status-badge');
     const btn = document.getElementById('btn-zebra-cross');
     const cancelBtn = document.getElementById('btn-cancel-lockdown');
@@ -227,10 +241,15 @@ export class HUDManager {
     const countdown = document.getElementById('signal-countdown');
     const audioPulse = document.getElementById('audio-pulse-indicator');
 
+    // Extract dual-red status
+    const isDualRed = dualRedInfo ? !!dualRedInfo.isDualRed : (this.app.trafficSystem && typeof this.app.trafficSystem.isSetiabudiDualRed === 'function' && this.app.trafficSystem.isSetiabudiDualRed());
+    this.updateDualRedWidget(isDualRed);
+
     // Extract green wave coordination flags
     const gwBlocking = greenWaveInfo ? !!greenWaveInfo.isBlocking : false;
     const gwPending = greenWaveInfo ? !!greenWaveInfo.isPending : false;
     const gwRemaining = greenWaveInfo ? (greenWaveInfo.remaining || 0) : 0;
+    const isAnnouncing = audioAnnounceInfo ? !!audioAnnounceInfo.isAnnouncing : false;
 
     // Extract empirical mode & stats if in 'before' mode
     if (empiricalInfo && empiricalInfo.systemMode === 'before') {
@@ -272,8 +291,43 @@ export class HUDManager {
       }
     }
 
+    if (isAnnouncing) {
+      // 0b. FASE AUDIO PANDUAN SUARA TUNA NETRA:
+      // Suara pengumuman sedang berbunyi, kendaraan berhenti, tuna netra masih di trotoar
+      if (lampRed) lampRed.classList.add('active');
+      if (lampGreen) lampGreen.classList.remove('active');
+
+      if (title) title.textContent = '🔊 Panduan Suara: Sinyal Diterima';
+      if (subtitle) subtitle.textContent = 'Memutar suara: "Penyeberangan diterima, silakan menyeberang." (Menunggu audio selesai...)';
+
+      if (countdown) {
+        countdown.style.display = 'block';
+        countdown.textContent = 'AUDIO';
+      }
+
+      if (audioPulse) {
+        audioPulse.style.display = 'flex';
+      }
+
+      if (badge) {
+        badge.className = 'status-pill active-crossing';
+        badge.innerHTML = '<span class="pulse-dot-red"></span><span>🔊 Panduan Audio Aktif</span>';
+      }
+
+      if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fa-solid fa-volume-high"></i> Panduan Suara Sedang Berbunyi...';
+      }
+
+      if (cancelBtn) {
+        cancelBtn.style.display = 'flex';
+        cancelBtn.innerHTML = '<i class="fa-solid fa-rotate-left"></i> Batalkan';
+      }
+      return;
+    }
+
     if (isCrossing) {
-      // 1. ACTIVE PEDESTRIAN CROSSING (15 seconds)
+      // 1. ACTIVE PEDESTRIAN CROSSING (10s Normal / 20s Tuna Netra)
       if (lampRed) lampRed.classList.remove('active');
       if (lampGreen) lampGreen.classList.add('active');
 
@@ -284,7 +338,7 @@ export class HUDManager {
       }
       if (subtitle) {
         subtitle.textContent = mode === 'tunanetra'
-          ? `Suara vokal & akustik bip pelican memandu aman (${crossingSec}s)`
+          ? `Audio selesai. Tuna Netra menyeberang dipandu sinyal akustik bip pelican (${crossingSec}s)`
           : `Kendaraan berhenti di garis henti, pejalan kaki melintas (${crossingSec}s)`;
       }
 
@@ -399,20 +453,35 @@ export class HUDManager {
       if (lampRed) lampRed.classList.add('active');
       if (lampGreen) lampGreen.classList.remove('active');
 
-      if (title) title.textContent = 'Sinyal Kendaraan: Melaju Normal';
-      if (subtitle) subtitle.textContent = 'Tekan tombol di bawah untuk meminta lampu hijau menyebrang';
-
       if (countdown) countdown.style.display = 'none';
       if (audioPulse) audioPulse.style.display = 'none';
 
-      if (badge) {
-        badge.className = 'status-pill';
-        badge.innerHTML = '<span class="pulse-dot"></span><span>Koridor Tertib (Pake Sistem)</span>';
-      }
+      if (isDualRed) {
+        if (title) title.textContent = '⚡ Setiabudi & Terusan Merah: Langsung Tersedia!';
+        if (subtitle) subtitle.textContent = 'Simpang 3 sedang merah kedua-duanya. Lockdown Mupenas dilepas otomatis & penyeberangan langsung tersedia!';
 
-      if (btn) {
-        btn.disabled = false;
-        btn.innerHTML = '<i class="fa-solid fa-hand"></i> Minta Menyebrang (Tekan Tombol)';
+        if (badge) {
+          badge.className = 'status-pill active-crossing chip-dual-red';
+          badge.innerHTML = '<span class="pulse-dot"></span><span>⚡ Mupenas Langsung Tersedia (Dual-Red)</span>';
+        }
+
+        if (btn) {
+          btn.disabled = false;
+          btn.innerHTML = '<i class="fa-solid fa-person-walking-arrow-right"></i> Minta Menyebrang (Langsung Tersedia)';
+        }
+      } else {
+        if (title) title.textContent = 'Sinyal Kendaraan: Melaju Normal';
+        if (subtitle) subtitle.textContent = 'Tekan tombol di bawah untuk meminta lampu hijau menyebrang';
+
+        if (badge) {
+          badge.className = 'status-pill';
+          badge.innerHTML = '<span class="pulse-dot"></span><span>Koridor Tertib (Pake Sistem)</span>';
+        }
+
+        if (btn) {
+          btn.disabled = false;
+          btn.innerHTML = '<i class="fa-solid fa-hand"></i> Minta Menyebrang (Tekan Tombol)';
+        }
       }
 
       if (cancelBtn) {
@@ -430,6 +499,9 @@ export class HUDManager {
     this.updateTelemetry();
     this.updateEmpiricalCounters();
     this.updateSimpangLightBadge();
+    if (this.app.trafficSystem && typeof this.app.trafficSystem.isSetiabudiDualRed === 'function') {
+      this.updateDualRedWidget(this.app.trafficSystem.isSetiabudiDualRed());
+    }
   }
 
   updateSimpangLightBadge() {
@@ -439,26 +511,74 @@ export class HUDManager {
     const iconEl = document.getElementById('simpang-apill-icon');
     if (!textEl) return;
 
+    const sState = info.setiabudiState || (info.setiabudi && info.setiabudi.state) || 'RED';
+    const sTime = Math.max(0, Math.round(Number(info.setiabudiTimeRemaining ?? info.setiabudi?.countdown ?? 0) || 0));
+    const bState = info.bajuriState || (info.bajuri && info.bajuri.state) || 'RED';
+    const bTime = Math.max(0, Math.round(Number(info.bajuriTimeRemaining ?? info.bajuri?.countdown ?? 0) || 0));
+
     let sIcon = '🟢';
     let sColor = '#10b981';
-    if (info.setiabudiState === 'YELLOW') {
+    if (sState === 'YELLOW') {
       sIcon = '🟡';
       sColor = '#f59e0b';
-    } else if (info.setiabudiState === 'RED') {
+    } else if (sState === 'RED') {
       sIcon = '🔴';
       sColor = '#ef4444';
     }
 
     let bIcon = '🟢';
-    if (info.bajuriState === 'YELLOW') {
+    if (bState === 'YELLOW') {
       bIcon = '🟡';
-    } else if (info.bajuriState === 'RED') {
+    } else if (bState === 'RED') {
       bIcon = '🔴';
     }
 
-    textEl.textContent = `Setiabudi ${sIcon} ${info.setiabudiTimeRemaining}s | Bajuri ${bIcon} ${info.bajuriTimeRemaining}s`;
+    const mupenasTag = info.isDualRed ? ' • ⚡ Mupenas Tersedia' : '';
+    textEl.textContent = `Setiabudi ${sIcon} ${sTime}s${mupenasTag} | Bajuri ${bIcon} ${bTime}s`;
     if (iconEl) {
       iconEl.style.color = sColor;
+    }
+  }
+
+  updateDualRedWidget(isDualRed) {
+    const card = document.getElementById('simpang-dual-red-card');
+    const badge = document.getElementById('dual-red-badge-indicator');
+    const desc = document.getElementById('dual-red-status-desc');
+    const btnText = document.getElementById('btn-toggle-dual-red-text');
+    const btn = document.getElementById('btn-toggle-dual-red');
+
+    if (!card) return;
+
+    if (isDualRed) {
+      card.classList.add('dual-red-active');
+      if (badge) {
+        badge.className = 'dual-red-badge badge-red';
+        badge.innerHTML = '<span class="pulse-dot-red"></span> Merah Keduanya (Bypass Aktif)';
+      }
+      if (desc) {
+        desc.innerHTML = '⚡ <strong>Setiabudi & Terusan Setiabudi KEDUA-DUANYA MERAH!</strong> Lockdown di Mupenas seketika dilepas & tombol penyeberangan <strong>langsung tersedia</strong>!';
+      }
+      if (btnText) {
+        btnText.textContent = 'Kembalikan Setiabudi ke Hijau';
+      }
+      if (btn) {
+        btn.classList.add('btn-active-red');
+      }
+    } else {
+      card.classList.remove('dual-red-active');
+      if (badge) {
+        badge.className = 'dual-red-badge badge-green';
+        badge.innerHTML = '<span class="pulse-dot-green"></span> Setiabudi Hijau (Normal)';
+      }
+      if (desc) {
+        desc.innerHTML = 'Jika Jl. Setiabudi & Terusan Setiabudi kedua-duanya <strong>Lampu Merah</strong>, tombol penyeberangan Mupenas <strong>langsung tersedia</strong> (lockdown otomatis dilepas).';
+      }
+      if (btnText) {
+        btnText.textContent = 'Simulasikan Merah Keduanya (Bypass)';
+      }
+      if (btn) {
+        btn.classList.remove('btn-active-red');
+      }
     }
   }
 
